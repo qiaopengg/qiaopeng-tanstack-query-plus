@@ -41,7 +41,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             if (sourceField in sourceObj) { targetObj[targetField] = sourceObj[sourceField]; }
           });
         }
-        queryClient.setQueryData(optimistic.queryKey, (oldData) => optimistic.updater(oldData, mappedVariables));
+        queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
         return { previousData, userContext } as MutationCtx;
@@ -111,7 +111,7 @@ export function useConditionalOptimisticMutation<TData = unknown, TError = Error
       try {
         await queryClient.cancelQueries({ queryKey: optimistic.queryKey });
         const previousData = queryClient.getQueryData(optimistic.queryKey);
-        queryClient.setQueryData(optimistic.queryKey, (oldData) => optimistic.updater(oldData, variables));
+        queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, variables));
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
         return { previousData, userContext, conditionMet: true } as any;
