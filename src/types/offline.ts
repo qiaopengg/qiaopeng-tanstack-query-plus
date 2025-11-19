@@ -1,0 +1,12 @@
+import type { QueryKey } from "@tanstack/react-query";
+import type { NetworkStatus, OperationResult } from "./base";
+export interface OfflineRecoveryConfig { enabled: boolean; retryInterval: number; maxRetries: number; retryDelay: number; customRetryDelay?: (attempt: number) => number; networkCheckInterval: number; retryOnReconnect: boolean; refetchOnWindowFocus: boolean; queryFilter?: (queryKey: QueryKey) => boolean; checkInterval?: number; refetchOnReconnect?: boolean }
+export interface OfflineQueryInfo { queryKey: QueryKey; queryFn: () => Promise<unknown>; failedAt: Date; retryCount: number; lastError?: Error; isPaused: boolean; metadata?: Record<string, unknown> }
+export enum MutationOperationType { CREATE = "create", UPDATE = "update", DELETE = "delete", PATCH = "patch", CUSTOM = "custom" }
+export interface OfflineMutationOperation { id: string; type: MutationOperationType; mutationKey: QueryKey; mutationFn: () => Promise<unknown>; variables: unknown; createdAt: Date; retryCount: number; lastError?: Error; priority: number; dependsOn?: string[]; metadata?: Record<string, unknown> }
+export interface OfflineQueueConfig { enabled: boolean; maxSize: number; persist: boolean; storageKey: string; autoExecuteInterval: number; executeOnReconnect: boolean; operationTimeout: number; concurrency: number }
+export interface MutationFunctionRegistry { register: (key: string, fn: () => Promise<unknown>) => void; get: (key: string) => (() => Promise<unknown>) | undefined; unregister: (key: string) => void; clear: () => void; getKeys: () => string[] }
+export interface OfflineManagerConfig { networkCheck: { interval: number; url?: string; timeout: number }; queue: OfflineQueueConfig; recovery: OfflineRecoveryConfig; callbacks?: { onNetworkChange?: (status: NetworkStatus) => void; onQueueOperation?: (operation: OfflineMutationOperation, result: OperationResult) => void; onRecoveryComplete?: (recoveredCount: number) => void } }
+export interface OfflineState { isOffline: boolean; networkStatus: NetworkStatus; queuedOperations: number; failedQueries: number; lastSyncAt?: Date; isRecovering: boolean }
+export interface OfflineQueryOptions { enabled?: boolean; fallbackData?: unknown; showStaleWhileOffline?: boolean; onReconnect?: "refetch" | "keep" | "invalidate" }
+export interface OfflineMutationOptions { enableQueue?: boolean; priority?: number; dependsOn?: string[]; optimisticUpdate?: (variables: unknown) => void; rollback?: (variables: unknown) => void }

@@ -1,0 +1,1 @@
+export interface StorageInfo { type: import("./base").StorageType; used: number; total: number; usage: number; available: boolean; error?: string }

@@ -1,0 +1,20 @@
+import type { QueryKey } from "@tanstack/react-query";
+import type { EntityWithId } from "./selectors";
+export interface OptimisticUpdateConfig<TData = unknown, TVariables = unknown> { queryKey: QueryKey; updater: (oldData: TData | undefined, variables: TVariables) => TData | undefined; rollback?: (previousData: TData, error: Error) => void; enabled?: boolean }
+export interface OptimisticContext<TData = unknown> { previousData?: TData; timestamp: number; operationType: OptimisticOperationTypeValue }
+export const OptimisticOperationType = { CREATE: "create", UPDATE: "update", DELETE: "delete", BATCH: "batch" } as const;
+export type OptimisticOperationTypeValue = (typeof OptimisticOperationType)[keyof typeof OptimisticOperationType];
+export interface ListOperationConfig<T extends EntityWithId> { queryKey: QueryKey; operation: ListOperationType; onRollback?: (error: Error, context: OptimisticContext<T[]>) => void }
+export enum ListOperationType { ADD = "add", UPDATE = "update", REMOVE = "remove" }
+export interface BatchQueryResult<TData = unknown, TError = Error> { data: TData | undefined; isLoading: boolean; isError: boolean; error: TError | null; status: "pending" | "error" | "success" }
+export type OptimisticUpdater<TData = unknown, TVariables = unknown> = (oldData: TData | undefined, variables: TVariables) => TData;
+export type RollbackFunction<TData = unknown> = (previousData: TData, error: Error) => void;
+export type ListUpdater<T extends EntityWithId> = { add: (items: T[] | undefined, newItem: T) => T[]; update: (items: T[] | undefined, updatedItem: Partial<T> & { id: T["id"] }) => T[]; remove: (items: T[] | undefined, itemId: T["id"]) => T[] };
+export interface OptimisticGlobalConfig { enabledByDefault: boolean; defaultRollbackDelay: number; debugMode: boolean; maxRetries: number }
+export interface BatchQueryStats { total: number; loading: number; success: number; error: number; stale: number; successRate: number; errorRate: number }
+export interface BatchQueryConfig<TData = unknown, TError = Error> { enableStats?: boolean; enableBatchOperations?: boolean; autoRefreshInterval?: number; onBatchSuccess?: (results: TData[]) => void; onBatchError?: (errors: TError[]) => void; onBatchSettled?: (results: TData[], errors: TError[]) => void; retryConfig?: BatchRetryConfig; enablePartialSuccess?: boolean; onPartialSuccess?: (report: BatchOperationReport<TData, TError>) => void }
+export interface BatchRetryConfig { maxRetries?: number; retryDelay?: number | ((attemptIndex: number) => number); retryOnlyFailed?: boolean; shouldRetry?: (error: Error, attemptCount: number) => boolean }
+export interface BatchOperationReport<TData = unknown, TError = Error> { total: number; successful: number; failed: number; successResults: Array<{ index: number; data: TData }>; failureErrors: Array<{ index: number; error: TError; queryKey?: unknown[] }>; isPartialSuccess: boolean; isFullSuccess: boolean; isFullFailure: boolean; duration: number; retryCount?: number }
+export interface BatchErrorAggregate<TError = Error> { totalErrors: number; errors: Array<{ index: number; error: TError; queryKey?: unknown[] }>; errorsByType: Map<string, TError[]>; firstError: TError | null; lastError: TError | null; errorSummary: string }
+export interface BatchQueryOperations { refetchAll: () => Promise<PromiseSettledResult<unknown>[]>; invalidateAll: () => Promise<PromiseSettledResult<void>[]>; cancelAll: () => Promise<PromiseSettledResult<void>[]>; resetAll: () => Promise<PromiseSettledResult<void>[]>; removeAll: () => void; retryFailed: () => Promise<BatchOperationReport>; getErrorAggregate: () => BatchErrorAggregate; getOperationReport: () => BatchOperationReport }
+export interface EnhancedBatchQueryResult<TData = unknown, TCombinedResult = TData, TError = Error> { data: TCombinedResult; stats: BatchQueryStats; operations: BatchQueryOperations; config: BatchQueryConfig<TData, TError> }

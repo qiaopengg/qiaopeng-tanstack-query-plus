@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Coverage
+coverage/
+.nyc_output/
+
+# OS & Editor
+.DS_Store
+.idea/
+.vscode/
+.cache/
+.eslintcache
+
+# Environment files (do not commit secrets)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# NPM pack artifacts
+*.tgz
