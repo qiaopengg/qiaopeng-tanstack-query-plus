@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { isProd } from "./env.js";
 export { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
@@ -6,9 +7,9 @@ export interface DevToolsConfig {
   position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   enabled?: boolean;
   buttonPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
-  panelProps?: React.ComponentProps<"div">;
-  closeButtonProps?: React.ComponentProps<"button">;
-  toggleButtonProps?: React.ComponentProps<"button">;
+  panelProps?: ComponentProps<"div">;
+  closeButtonProps?: ComponentProps<"button">;
+  toggleButtonProps?: ComponentProps<"button">;
 }
 
 export const defaultDevToolsConfig: DevToolsConfig = {

@@ -21,6 +21,7 @@ export {
 } from "./config.js";
 export { createDevToolsConfig, defaultDevToolsConfig, type DevToolsConfig, isDevToolsEnabled } from "./devtools.js";
 export { ReactQueryDevtools } from "./devtools.js";
+export { isDev, isProd, isTest } from "./env.js";
 export {
   focusManager,
   type FocusManagerConfig,

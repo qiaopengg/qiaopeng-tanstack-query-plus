@@ -93,22 +93,33 @@ export function useSmartPrefetch() {
   return { prefetch, shouldPrefetch: !isSlowNetwork(), clearPrefetchHistory };
 }
 
+function useStableQueryKey(queryKey: QueryKey): QueryKey {
+  const keyRef = useRef(queryKey);
+  const keyStr = JSON.stringify(queryKey);
+  const prevKeyStr = useRef(keyStr);
+  if (prevKeyStr.current !== keyStr) {
+    keyRef.current = queryKey;
+    prevKeyStr.current = keyStr;
+  }
+  return keyRef.current;
+}
+
 export function useConditionalPrefetch<TData = unknown>(queryKey: QueryKey, queryFn: QueryFunction<TData>, condition: boolean, options?: PrefetchOptions) {
   const queryClient = useQueryClient();
   const { staleTime = DEFAULT_STALE_TIME, delay = 0 } = options || {};
   const queryFnRef = useRef(queryFn);
   useEffect(() => { queryFnRef.current = queryFn; }, [queryFn]);
-  const stableQueryKey = useRef(queryKey);
-  useEffect(() => { if (JSON.stringify(stableQueryKey.current) !== JSON.stringify(queryKey)) { stableQueryKey.current = queryKey; } }, [queryKey]);
+  const stableQueryKey = useStableQueryKey(queryKey);
   useEffect(() => {
     if (!condition) return;
+    const currentQueryKey = stableQueryKey;
     const timeoutId = setTimeout(() => {
-      if (isMissingOrStale(queryClient, stableQueryKey.current, staleTime)) {
-        queryClient.prefetchQuery({ queryKey: stableQueryKey.current, queryFn: queryFnRef.current, staleTime });
+      if (isMissingOrStale(queryClient, currentQueryKey, staleTime)) {
+        queryClient.prefetchQuery({ queryKey: currentQueryKey, queryFn: queryFnRef.current, staleTime });
       }
     }, delay);
     return () => clearTimeout(timeoutId);
-  }, [condition, queryClient, staleTime, delay]);
+  }, [condition, queryClient, staleTime, delay, stableQueryKey]);
 }
 
 export function useIdlePrefetch<TData = unknown>(queryKey: QueryKey, queryFn: QueryFunction<TData>, options?: PrefetchOptions & { timeout?: number }) {
@@ -116,25 +127,25 @@ export function useIdlePrefetch<TData = unknown>(queryKey: QueryKey, queryFn: Qu
   const { staleTime = DEFAULT_STALE_TIME, enabled = true, timeout = 1000 } = options || {};
   const queryFnRef = useRef(queryFn);
   useEffect(() => { queryFnRef.current = queryFn; }, [queryFn]);
-  const stableQueryKey = useRef(queryKey);
-  useEffect(() => { if (JSON.stringify(stableQueryKey.current) !== JSON.stringify(queryKey)) { stableQueryKey.current = queryKey; } }, [queryKey]);
+  const stableQueryKey = useStableQueryKey(queryKey);
   useEffect(() => {
     if (!enabled) return;
+    const currentQueryKey = stableQueryKey;
     if (typeof window === "undefined" || !("requestIdleCallback" in window)) {
       const timeoutId = setTimeout(() => {
-        if (isMissingOrStale(queryClient, stableQueryKey.current, staleTime)) {
-          queryClient.prefetchQuery({ queryKey: stableQueryKey.current, queryFn: queryFnRef.current, staleTime });
+        if (isMissingOrStale(queryClient, currentQueryKey, staleTime)) {
+          queryClient.prefetchQuery({ queryKey: currentQueryKey, queryFn: queryFnRef.current, staleTime });
         }
       }, timeout);
       return () => clearTimeout(timeoutId);
     }
     const idleCallbackId = (window as any).requestIdleCallback(() => {
-      if (isMissingOrStale(queryClient, stableQueryKey.current, staleTime)) {
-        queryClient.prefetchQuery({ queryKey: stableQueryKey.current, queryFn: queryFnRef.current, staleTime });
+      if (isMissingOrStale(queryClient, currentQueryKey, staleTime)) {
+        queryClient.prefetchQuery({ queryKey: currentQueryKey, queryFn: queryFnRef.current, staleTime });
       }
     }, { timeout });
     return () => (window as any).cancelIdleCallback(idleCallbackId);
-  }, [queryClient, staleTime, enabled, timeout]);
+  }, [queryClient, staleTime, enabled, timeout, stableQueryKey]);
 }
 
 export function usePeriodicPrefetch<TData = unknown>(queryKey: QueryKey, queryFn: QueryFunction<TData>, options?: PrefetchOptions & { interval?: number }) {
@@ -142,19 +153,19 @@ export function usePeriodicPrefetch<TData = unknown>(queryKey: QueryKey, queryFn
   const { staleTime = DEFAULT_STALE_TIME, enabled = true, interval = 60000 } = options || {};
   const queryFnRef = useRef(queryFn);
   useEffect(() => { queryFnRef.current = queryFn; }, [queryFn]);
-  const stableQueryKey = useRef(queryKey);
-  useEffect(() => { if (JSON.stringify(stableQueryKey.current) !== JSON.stringify(queryKey)) { stableQueryKey.current = queryKey; } }, [queryKey]);
+  const stableQueryKey = useStableQueryKey(queryKey);
   useEffect(() => {
     if (!enabled) return;
+    const currentQueryKey = stableQueryKey;
     const prefetchData = () => {
-      if (isMissingOrStale(queryClient, stableQueryKey.current, staleTime)) {
-        queryClient.prefetchQuery({ queryKey: stableQueryKey.current, queryFn: queryFnRef.current, staleTime });
+      if (isMissingOrStale(queryClient, currentQueryKey, staleTime)) {
+        queryClient.prefetchQuery({ queryKey: currentQueryKey, queryFn: queryFnRef.current, staleTime });
       }
     };
     prefetchData();
     const intervalId = setInterval(prefetchData, interval);
     return () => clearInterval(intervalId);
-  }, [queryClient, staleTime, enabled, interval]);
+  }, [queryClient, staleTime, enabled, interval, stableQueryKey]);
 }
 
 export function usePredictivePrefetch() {

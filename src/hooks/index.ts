@@ -52,5 +52,5 @@ export {
   useRoutePrefetch,
   useSmartPrefetch
 } from "./usePrefetch.js";
-export { skipToken, useEnhancedQuery } from "./useQuery.js";
+export { skipToken, useEnhancedQuery, type EnhancedQueryOptions, type EnhancedQueryResult } from "./useQuery.js";
 export { createSuspenseInfiniteQuery, createSuspenseQuery, useEnhancedSuspenseInfiniteQuery, useEnhancedSuspenseQuery } from "./useSuspenseQuery.js";

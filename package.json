@@ -2,7 +2,16 @@
   "name": "@qiaopeng/tanstack-query-plus",
   "version": "0.1.4",
   "description": "Enhanced TanStack Query toolkit: defaults, hooks, persistence, offline, utils",
+  "author": "qiaopeng",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qiaopengg/qiaopeng-tanstack-query-plus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qiaopengg/qiaopeng-tanstack-query-plus/issues"
+  },
+  "homepage": "https://github.com/qiaopengg/qiaopeng-tanstack-query-plus#readme",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
