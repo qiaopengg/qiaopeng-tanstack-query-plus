@@ -126,6 +126,7 @@ function App() {
   enableOfflineSupport={true} // 启用离线状态监听（默认 true）
   cacheKey="my-app-cache"     // 自定义缓存 key（默认 'tanstack-query-cache'）
   onPersistRestore={() => console.log('缓存已恢复')}  // 缓存恢复回调
+  onPersistError={(err) => console.error('持久化错误', err)}
 >
   <YourApp />
 </PersistQueryClientProvider>
@@ -150,15 +151,15 @@ function App() {
 ```typescript
 {
   queries: {
-    staleTime: 30000,        // 数据 30 秒内视为新鲜
-    gcTime: 600000,          // 缓存保留 10 分钟
-    retry: smartRetry,       // 智能重试（4xx 不重试，5xx 最多重试 3 次）
-    retryDelay: exponential, // 指数退避（1s, 2s, 4s...最大 30s）
-    refetchOnWindowFocus: true,   // 窗口聚焦时刷新
-    refetchOnReconnect: true,     // 网络恢复时刷新
+    staleTime: 30000,
+    gcTime: 600000,
+    retry: defaultQueryRetryStrategy,
+    retryDelay: exponentialBackoff,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   },
   mutations: {
-    retry: 0,                // mutation 默认不重试
+    retry: 0,
     gcTime: 600000,
   }
 }
@@ -2479,8 +2480,9 @@ const queueManager = createOfflineQueueManager({
 })
 
 // 注册 mutation 函数（用于恢复队列时执行）
-mutationRegistry.register('updateUser', () => updateUserAPI(data))
-mutationRegistry.register('createPost', () => createPostAPI(data))
+// 注册函数签名为 () => Promise<unknown>，如需变量请使用闭包或在入队项的 mutationFn 捕获
+mutationRegistry.register('updateUser', () => updateUserAPI(savedUserData))
+mutationRegistry.register('createPost', () => createPostAPI(savedPostData))
 
 // 添加操作到队列
 async function handleUpdateUser(userData) {
@@ -2895,7 +2897,7 @@ const { data: adminEmails } = useQuery({
   queryFn: fetchUsers,
   select: selectors.compose(
     selectors.where(u => u.role === 'admin'),
-    selectors.field('email')
+    selectors.map(u => u.email)
   ),
 })
 ```
@@ -3260,12 +3262,14 @@ src/
 ```tsx
 // queries/users.ts
 import { useEnhancedQuery } from '@qiaopeng/tanstack-query-plus/hooks'
-import { queryKeys } from './keys'
+import { createDomainKeyFactory } from '@qiaopeng/tanstack-query-plus/core'
 import { fetchUser, fetchUsers } from '@/api/users'
+
+const userKeys = createDomainKeyFactory('users')
 
 export function useUser(userId: string) {
   return useEnhancedQuery({
-    queryKey: queryKeys.user(userId),
+    queryKey: userKeys.detail(userId),
     queryFn: () => fetchUser(userId),
     enabled: !!userId,
     trackPerformance: true,
@@ -3274,7 +3278,7 @@ export function useUser(userId: string) {
 
 export function useUsers(filters?: UserFilters) {
   return useEnhancedQuery({
-    queryKey: queryKeys.users(filters),
+    queryKey: userKeys.list(filters),
     queryFn: () => fetchUsers(filters),
   })
 }

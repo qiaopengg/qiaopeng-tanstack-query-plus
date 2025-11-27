@@ -32,7 +32,7 @@ export function PersistQueryClientProvider({
   }, [enableOfflineSupport]);
 
   if (enablePersistence) {
-    const persister = createPersister(cacheKey);
+    const persister = createPersister(cacheKey, undefined, _onPersistError);
     if (!persister) {
       return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
     }

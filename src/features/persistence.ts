@@ -40,16 +40,16 @@ export function createPersistOptions(config: Partial<PersistOptions> = {}): { ma
     }
   };
 }
-export function createPersister(storageKey = "tanstack-query-cache", storage?: Storage): Persister | undefined {
+export function createPersister(storageKey = "tanstack-query-cache", storage?: Storage, onError?: (error: Error) => void): Persister | undefined {
   if (typeof window === "undefined") { return undefined; }
   const targetStorage = storage || window.localStorage;
   if (!targetStorage) { return undefined; }
   try {
     const safeStorage = createSafeStorage(targetStorage, storageKey);
     const persister: Persister = {
-      persistClient: async (client: PersistedClient) => { try { safeStorage.setItem(storageKey, JSON.stringify(client)); } catch {} },
-      restoreClient: async () => { try { const raw = safeStorage.getItem(storageKey); return raw ? (JSON.parse(raw) as PersistedClient) : undefined; } catch { return undefined; } },
-      removeClient: async () => { try { safeStorage.removeItem(storageKey); } catch {} }
+      persistClient: async (client: PersistedClient) => { try { safeStorage.setItem(storageKey, JSON.stringify(client)); } catch (e) { if (onError && e instanceof Error) { onError(e); } } },
+      restoreClient: async () => { try { const raw = safeStorage.getItem(storageKey); return raw ? (JSON.parse(raw) as PersistedClient) : undefined; } catch (e) { if (onError && e instanceof Error) { onError(e); } return undefined; } },
+      removeClient: async () => { try { safeStorage.removeItem(storageKey); } catch (e) { if (onError && e instanceof Error) { onError(e); } } }
     };
     return persister;
   } catch { return undefined; }
