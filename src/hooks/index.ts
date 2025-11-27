@@ -25,7 +25,7 @@ export {
   type UsePauseFocusOptions,
   useSmartFocusManager
 } from "./useFocusManager.js";
-export { createCursorPaginationOptions, createOffsetPaginationOptions, createPageNumberPaginationOptions, useEnhancedInfiniteQuery } from "./useInfiniteQuery.js";
+export { createCursorPaginationOptions, createInfiniteQueryOptions, createOffsetPaginationOptions, createPageNumberPaginationOptions, useEnhancedInfiniteQuery } from "./useInfiniteQuery.js";
 export {
   cancelQueriesBatch,
   invalidateQueriesBatch,

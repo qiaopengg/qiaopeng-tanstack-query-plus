@@ -8,4 +8,5 @@ export {
   TextSkeletonFallback
 } from "./LoadingFallback.js";
 export { QueryErrorBoundary, type QueryErrorBoundaryProps } from "./QueryErrorBoundary.js";
-export { SuspenseWrapper } from "./SuspenseWrapper.js";
+export { QuerySuspenseWrapper, SuspenseWrapper } from "./SuspenseWrapper.js";
+// Note: SuspenseWrapperProps type is exported from ../types/suspense.js
