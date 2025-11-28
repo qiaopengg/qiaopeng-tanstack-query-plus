@@ -1,5 +1,6 @@
 import type { MutationFunction, MutationKey, QueryClient, QueryKey, UseMutationOptions as TanStackUseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 import type { MutationContext, MutationOptions } from "../types";
+import { findFamilyQueries, syncEntityAcrossFamily } from "../utils/consistency.js";
 import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
@@ -41,14 +42,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             if (sourceField in sourceObj) { targetObj[targetField] = sourceObj[sourceField]; }
           });
         }
-        const safeUpdater = (oldData: unknown | undefined) => {
-          const next = optimistic.updater(oldData, mappedVariables);
-          return typeof next === "undefined" ? oldData : next;
-        };
-        queryClient.setQueryData(optimistic.queryKey, safeUpdater);
-        if (optimistic.reconcileCachedPages && optimistic.invalidatePrefixKey) {
-          queryClient.setQueriesData({ queryKey: optimistic.invalidatePrefixKey }, safeUpdater);
-        }
+        queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
         return { previousData, userContext } as MutationCtx;
@@ -69,8 +63,20 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
     };
     mutationConfig.onSuccess = (data, variables, context) => {
-      const scope = optimistic.invalidateScope === "prefix" && optimistic.invalidatePrefixKey ? optimistic.invalidatePrefixKey : optimistic.queryKey;
-      queryClient.invalidateQueries({ queryKey: scope });
+      queryClient.invalidateQueries({ queryKey: optimistic.queryKey });
+      const consistency = (options as any).consistency as { baseKey: QueryKey; mode?: "invalidate" | "sync+invalidate"; idField?: string; listSelector?: (data: unknown) => unknown[] | { items: unknown[]; total?: number } | null; maxKeys?: number } | undefined;
+      if (consistency && Array.isArray(consistency.baseKey) && consistency.baseKey.length > 0) {
+        try {
+          const keys = findFamilyQueries(queryClient, { baseKey: consistency.baseKey, maxKeys: consistency.maxKeys });
+          if (consistency.mode === "sync+invalidate") {
+            const updatedEntity = (typeof data === "object" && data !== null) ? data : (typeof variables === "object" && variables !== null ? variables : undefined);
+            if (updatedEntity) {
+              syncEntityAcrossFamily(queryClient, keys, updatedEntity as unknown, { idField: consistency.idField, listSelector: consistency.listSelector });
+            }
+          }
+          keys.forEach((key) => { queryClient.invalidateQueries({ queryKey: key }); });
+        } catch {}
+      }
       if (onSuccess) {
         const successCallback = onSuccess as (d: TData, vars: TVariables, ctx: TContext) => void;
         successCallback(data, variables, context?.userContext as TContext);

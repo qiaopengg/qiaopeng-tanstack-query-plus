@@ -6,3 +6,4 @@ export { getPrefetchManager, type InteractionRecord, type NetworkSpeed, type Pre
 export { createQueryKeyFactory, createSimpleQueryKeyFactory, extractParamsFromKey, isQueryKeyEqual, type NormalizeConfig, normalizeQueryParams, type QueryKeyFactory, type QueryKeyFactoryConfig } from "./queryKey.js";
 export { compose, selectById, selectByIds, selectCount, selectField, selectFields, selectFirst, selectItems, selectLast, selectMap, selectors, selectTotal, selectWhere } from "./selectors.js";
 export { deepClone, formatBytes, getStorageUsage, isStorageAvailable } from "./storage.js";
+export { findFamilyQueries, syncEntityAcrossFamily, type FamilyQueryMatchOptions } from "./consistency.js";

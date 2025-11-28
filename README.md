@@ -968,7 +968,7 @@ const list7 = conditionalUpdateItems(
 )
 ```
 
-### 7.9 完整示例：Todo 应用
+ ### 7.9 完整示例：Todo 应用
 
 ```tsx
 import { useEnhancedQuery, useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
@@ -1038,54 +1038,55 @@ function TodoApp() {
       </ul>
     </div>
   )
+  }
 }
 ```
 
-### 7.10 跨分页一致性：前缀失效与缓存对齐
+### 7.10 分页家族一致性（避免分页切换回退）
 
-在分页列表中，乐观更新通常只更新“当前页”的缓存。为了保证切换到其他页时也看到最新数据，可以使用前缀级失效与跨页缓存对齐：
+在带分页/筛选/排序的列表中，编辑、新增、删除、状态变更成功后切换 `page/pageSize` 时，可能命中同一资源的另一查询变体，从而短暂显示旧快照。本库提供可选的“家族一致性”能力，保障在成功后切换分页不回退。
 
-1. 使用统一的域前缀管理 Query Key（例如 `products` 域）：
-
-```tsx
-import { createDomainKeyFactory } from '@qiaopeng/tanstack-query-plus/core'
-
-const productKeys = createDomainKeyFactory('products')
-const listPrefix = productKeys.lists()            // ['tanstack-query', 'products', 'list']
-```
-
-2. 在 mutation 的乐观更新中启用跨页对齐与前缀失效：
+- 开启方式：在 `useMutation` 传入 `consistency` 配置（默认关闭，显式启用）
+- 安全默认：`mode: 'invalidate'` 只执行家族失效，确保最终与服务端一致
+- 进阶模式：`mode: 'sync+invalidate'` 先对缓存中已存在的变体按 `id` 合并更新，再统一失效
+- 形状适配：通过 `listSelector` 适配 `{items,total}` 结构；无法识别时自动降级为仅失效
 
 ```tsx
 import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
+import { createPaginatedKey } from '@qiaopeng/tanstack-query-plus/core'
 
-function UpdateProduct({ product }) {
-  const mutation = useMutation({
-    mutationFn: (patch) => api.updateProduct(product.id, patch),
+function useUpdateProduct({ page, pageSize }) {
+  return useMutation({
+    mutationFn: (updated) => api.updateProduct(updated.id, updated),
+
+    // 当前页的乐观更新：先更新 UI，再发请求，失败自动回滚
     optimistic: {
-      queryKey: productKeys.detail(product.id),
-      updater: (oldData, patch) => ({ ...oldData, ...patch }),
-      invalidateScope: 'prefix',
-      invalidatePrefixKey: listPrefix,
-      reconcileCachedPages: true
-    }
-  })
+      queryKey: createPaginatedKey(['products', 'list'], page, pageSize),
+      updater: (old, updated) => old?.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
+    },
 
-  return (
-    <button onClick={() => mutation.mutate({ title: '新标题' })}>
-      更新商品
-    </button>
-  )
+    // 家族一致性：编辑成功后，保障跨分页/筛选/排序的变体不回退
+    consistency: {
+      baseKey: ['products', 'list'],
+      mode: 'sync+invalidate',
+      idField: 'id',
+      // 适配分页对象：提取 items；不确定时返回 null 将仅失效
+      listSelector: (data) => {
+        if (data && typeof data === 'object' && 'items' in (data as any)) {
+          return { items: (data as any).items, total: (data as any).total }
+        }
+        if (Array.isArray(data)) return { items: data }
+        return null
+      },
+      maxKeys: 50,
+    },
+  })
 }
 ```
 
-行为说明：
-- 乐观阶段：先更新当前 key，对已缓存的所有分页列表也应用同样的更新，使切页立即看到新值。
-- 成功后：对域前缀进行失效，后续展示从服务端获取最终一致数据。
-
-注意事项：
-- 请确保分页查询的 Key 都共享同一前缀（例如通过 `createDomainKeyFactory`），否则前缀失效无法覆盖所有分页。
-- 在超大列表场景中，跨页对齐可能带来一定开销，可按需开启。
+适用操作与行为说明：
+- 编辑/删除：在 `sync+invalidate` 模式下，会对已缓存的家族变体按 `id` 合并或移除；随后统一失效，最终以服务端为准
+- 新增/状态变更：默认不做跨页注入，仅当前页处理并家族失效；需要跨页放置时请在服务端裁决归属
 
 现在你已经掌握了数据变更和乐观更新。接下来，让我们学习如何处理无限滚动和分页场景。
 
@@ -3244,6 +3245,36 @@ function SearchResults({ query }) {
   )
 }
 ```
+
+### 14.11 家族一致性工具
+
+在某些高级场景下，你可能需要自行枚举并同步同一资源的家族查询变体（分页/筛选/排序等）。本库提供了工具函数用于匹配与安全同步：
+
+```tsx
+import { useQueryClient } from '@qiaopeng/tanstack-query-plus'
+import { findFamilyQueries, syncEntityAcrossFamily } from '@qiaopeng/tanstack-query-plus/utils'
+
+function useManualFamilySync() {
+  const queryClient = useQueryClient()
+  const sync = (updated) => {
+    const keys = findFamilyQueries(queryClient, { baseKey: ['products', 'list'], maxKeys: 50 })
+    syncEntityAcrossFamily(queryClient, keys, updated, {
+      idField: 'id',
+      listSelector: (data) => {
+        if (data && typeof data === 'object' && 'items' in (data as any)) {
+          return { items: (data as any).items, total: (data as any).total }
+        }
+        if (Array.isArray(data)) return { items: data }
+        return null
+      },
+    })
+    keys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }))
+  }
+  return { sync }
+}
+```
+
+提示：上述工具已在 `useMutation` 的一致性配置中自动使用；仅在需要手动控制时使用它们。
 
 现在你已经掌握了所有核心功能！最后，让我们看看一些最佳实践和常见问题。
 
