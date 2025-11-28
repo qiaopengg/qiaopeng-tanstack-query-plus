@@ -1041,6 +1041,52 @@ function TodoApp() {
 }
 ```
 
+### 7.10 跨分页一致性：前缀失效与缓存对齐
+
+在分页列表中，乐观更新通常只更新“当前页”的缓存。为了保证切换到其他页时也看到最新数据，可以使用前缀级失效与跨页缓存对齐：
+
+1. 使用统一的域前缀管理 Query Key（例如 `products` 域）：
+
+```tsx
+import { createDomainKeyFactory } from '@qiaopeng/tanstack-query-plus/core'
+
+const productKeys = createDomainKeyFactory('products')
+const listPrefix = productKeys.lists()            // ['tanstack-query', 'products', 'list']
+```
+
+2. 在 mutation 的乐观更新中启用跨页对齐与前缀失效：
+
+```tsx
+import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
+
+function UpdateProduct({ product }) {
+  const mutation = useMutation({
+    mutationFn: (patch) => api.updateProduct(product.id, patch),
+    optimistic: {
+      queryKey: productKeys.detail(product.id),
+      updater: (oldData, patch) => ({ ...oldData, ...patch }),
+      invalidateScope: 'prefix',
+      invalidatePrefixKey: listPrefix,
+      reconcileCachedPages: true
+    }
+  })
+
+  return (
+    <button onClick={() => mutation.mutate({ title: '新标题' })}>
+      更新商品
+    </button>
+  )
+}
+```
+
+行为说明：
+- 乐观阶段：先更新当前 key，对已缓存的所有分页列表也应用同样的更新，使切页立即看到新值。
+- 成功后：对域前缀进行失效，后续展示从服务端获取最终一致数据。
+
+注意事项：
+- 请确保分页查询的 Key 都共享同一前缀（例如通过 `createDomainKeyFactory`），否则前缀失效无法覆盖所有分页。
+- 在超大列表场景中，跨页对齐可能带来一定开销，可按需开启。
+
 现在你已经掌握了数据变更和乐观更新。接下来，让我们学习如何处理无限滚动和分页场景。
 
 ---

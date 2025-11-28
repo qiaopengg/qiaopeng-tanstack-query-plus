@@ -8,5 +8,5 @@ export * from "./selectors.js";
 export * from "./suspense.js";
 export interface MutationContext<TData = unknown, TContext = unknown> { previousData?: TData; userContext?: TContext; conditionMet?: boolean }
 export interface MutationOptions<TData, TError, TVariables, TContext = unknown> extends UseMutationOptions<TData, TError, TVariables, TContext> {
-  optimistic?: { queryKey: QueryKey; updater: <TQueryData = unknown>(oldData: TQueryData | undefined, variables: TVariables) => TQueryData | undefined; enabled?: boolean; fieldMapping?: Record<string, string>; rollback?: <TQueryData = unknown>(previousData: TQueryData, error: Error) => void };
+  optimistic?: { queryKey: QueryKey; updater: <TQueryData = unknown>(oldData: TQueryData | undefined, variables: TVariables) => TQueryData | undefined; enabled?: boolean; fieldMapping?: Record<string, string>; rollback?: <TQueryData = unknown>(previousData: TQueryData, error: Error) => void; invalidateScope?: "exact" | "prefix"; invalidatePrefixKey?: QueryKey; reconcileCachedPages?: boolean };
 }

@@ -41,7 +41,14 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             if (sourceField in sourceObj) { targetObj[targetField] = sourceObj[sourceField]; }
           });
         }
-        queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
+        const safeUpdater = (oldData: unknown | undefined) => {
+          const next = optimistic.updater(oldData, mappedVariables);
+          return typeof next === "undefined" ? oldData : next;
+        };
+        queryClient.setQueryData(optimistic.queryKey, safeUpdater);
+        if (optimistic.reconcileCachedPages && optimistic.invalidatePrefixKey) {
+          queryClient.setQueriesData({ queryKey: optimistic.invalidatePrefixKey }, safeUpdater);
+        }
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
         return { previousData, userContext } as MutationCtx;
@@ -62,7 +69,8 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
     };
     mutationConfig.onSuccess = (data, variables, context) => {
-      queryClient.invalidateQueries({ queryKey: optimistic.queryKey });
+      const scope = optimistic.invalidateScope === "prefix" && optimistic.invalidatePrefixKey ? optimistic.invalidatePrefixKey : optimistic.queryKey;
+      queryClient.invalidateQueries({ queryKey: scope });
       if (onSuccess) {
         const successCallback = onSuccess as (d: TData, vars: TVariables, ctx: TContext) => void;
         successCallback(data, variables, context?.userContext as TContext);
