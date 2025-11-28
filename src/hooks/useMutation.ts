@@ -1,12 +1,27 @@
 import type { MutationFunction, MutationKey, QueryClient, QueryKey, UseMutationOptions as TanStackUseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 import type { MutationContext, MutationOptions } from "../types";
-import { findFamilyQueries, syncEntityAcrossFamily } from "../utils/consistency.js";
 import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
 export type { MutationKey };
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
+
+function deriveFamilyKey(queryKey: QueryKey): QueryKey {
+  const arr = Array.isArray(queryKey) ? [...queryKey] : [queryKey as unknown];
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1];
+    if (last && typeof last === "object" && !Array.isArray(last)) { arr.pop(); continue; }
+    if (typeof last === "string" && (last === "paginated" || last === "filtered" || last === "sorted" || last === "search" || last === "complex")) { arr.pop(); continue; }
+    break;
+  }
+  return arr as unknown as QueryKey;
+}
+
+function isListFamilyKey(queryKey: QueryKey): boolean {
+  const parts = Array.isArray(queryKey) ? queryKey : [queryKey as unknown];
+  return parts.includes("list") || parts.includes("paginated");
+}
 
 export function useMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(options: MutationOptions<TData, TError, TVariables, TContext>): UseMutationResult<TData, TError, TVariables, TContext> {
   const queryClient = useQueryClient();
@@ -31,7 +46,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
         return { userContext } as MutationCtx;
       }
       try {
-        await queryClient.cancelQueries({ queryKey: optimistic.queryKey });
+        await queryClient.cancelQueries({ queryKey: optimistic.queryKey, exact: true });
         const previousData = queryClient.getQueryData(optimistic.queryKey);
         let mappedVariables: TVariables = variables;
         if (optimistic.fieldMapping && typeof variables === "object" && variables !== null) {
@@ -63,19 +78,34 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
     };
     mutationConfig.onSuccess = (data, variables, context) => {
-      queryClient.invalidateQueries({ queryKey: optimistic.queryKey });
-      const consistency = (options as any).consistency as { baseKey: QueryKey; mode?: "invalidate" | "sync+invalidate"; idField?: string; listSelector?: (data: unknown) => unknown[] | { items: unknown[]; total?: number } | null; maxKeys?: number } | undefined;
-      if (consistency && Array.isArray(consistency.baseKey) && consistency.baseKey.length > 0) {
-        try {
-          const keys = findFamilyQueries(queryClient, { baseKey: consistency.baseKey, maxKeys: consistency.maxKeys });
-          if (consistency.mode === "sync+invalidate") {
-            const updatedEntity = (typeof data === "object" && data !== null) ? data : (typeof variables === "object" && variables !== null ? variables : undefined);
-            if (updatedEntity) {
-              syncEntityAcrossFamily(queryClient, keys, updatedEntity as unknown, { idField: consistency.idField, listSelector: consistency.listSelector });
-            }
-          }
-          keys.forEach((key) => { queryClient.invalidateQueries({ queryKey: key }); });
-        } catch {}
+      const scope = optimistic.invalidateScope ?? (isListFamilyKey(optimistic.queryKey) ? "family" : "exact");
+      const invalidations: Array<Parameters<QueryClient["invalidateQueries"]>[0]> = [];
+      if (scope !== "none") {
+        if (scope === "family") {
+          const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+          invalidations.push({ queryKey: familyKey });
+        } else {
+          invalidations.push({ queryKey: optimistic.queryKey });
+        }
+      }
+      if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
+        optimistic.relatedKeys.forEach((k) => invalidations.push({ queryKey: k }));
+      }
+      if (invalidations.length > 0) {
+        const seen = new Set<string>();
+        const tasks = invalidations
+          .map((cfg) => ({ ...cfg, exact: false }))
+          .filter((cfg) => {
+            const key = JSON.stringify(cfg.queryKey);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        if (tasks.length === 1) {
+          queryClient.invalidateQueries(tasks[0]);
+        } else if (tasks.length > 1) {
+          invalidateQueriesBatch(queryClient, tasks);
+        }
       }
       if (onSuccess) {
         const successCallback = onSuccess as (d: TData, vars: TVariables, ctx: TContext) => void;
@@ -98,7 +128,15 @@ export function setupMutationDefaults(queryClient: QueryClient, config: Mutation
 
 export function useListMutation<T extends EntityWithId>(mutationFn: MutationFunction<T, { operation: string; data: Partial<T> }>, queryKey: QueryKey, options?: TanStackUseMutationOptions<T, Error, { operation: string; data: Partial<T> }> & { mutationKey?: readonly unknown[] }) {
   const queryClient = useQueryClient();
-  return useTanStackMutation({ mutationFn, onSettled: () => { queryClient.invalidateQueries({ queryKey }); }, ...options, mutationKey: options?.mutationKey });
+  return useTanStackMutation({
+    mutationFn,
+    onSettled: () => {
+      const familyKey = deriveFamilyKey(queryKey);
+      queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
+    },
+    ...options,
+    mutationKey: options?.mutationKey
+  });
 }
 
 export function useBatchMutation<TData = unknown, TError = Error, TVariables = unknown[]>(mutationFn: MutationFunction<TData[], TVariables>, options?: TanStackUseMutationOptions<TData[], TError, TVariables> & { mutationKey?: readonly unknown[] }) {
@@ -123,7 +161,7 @@ export function useConditionalOptimisticMutation<TData = unknown, TError = Error
         return { userContext, conditionMet: false } as any;
       }
       try {
-        await queryClient.cancelQueries({ queryKey: optimistic.queryKey });
+        await queryClient.cancelQueries({ queryKey: optimistic.queryKey, exact: true });
         const previousData = queryClient.getQueryData(optimistic.queryKey);
         queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, variables));
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
@@ -150,7 +188,37 @@ export function useConditionalOptimisticMutation<TData = unknown, TError = Error
       }
     };
     mutationConfig.onSettled = (data, error, variables, context) => {
-      if (context?.conditionMet) { queryClient.invalidateQueries({ queryKey: optimistic.queryKey }); }
+      if (context?.conditionMet) {
+        const scope = optimistic.invalidateScope ?? (isListFamilyKey(optimistic.queryKey) ? "family" : "exact");
+        const invalidations: Array<Parameters<QueryClient["invalidateQueries"]>[0]> = [];
+        if (scope !== "none") {
+          if (scope === "family") {
+            const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+            invalidations.push({ queryKey: familyKey });
+          } else {
+            invalidations.push({ queryKey: optimistic.queryKey });
+          }
+        }
+        if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
+          optimistic.relatedKeys.forEach((k) => invalidations.push({ queryKey: k }));
+        }
+        if (invalidations.length > 0) {
+          const seen = new Set<string>();
+          const tasks = invalidations
+            .map((cfg) => ({ ...cfg, exact: false }))
+            .filter((cfg) => {
+              const key = JSON.stringify(cfg.queryKey);
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+          if (tasks.length === 1) {
+            queryClient.invalidateQueries(tasks[0]);
+          } else if (tasks.length > 1) {
+            invalidateQueriesBatch(queryClient, tasks);
+          }
+        }
+      }
       if (onSettled) {
         const settledCallback = onSettled as (d: TData | undefined, err: TError | null, vars: TVariables, ctx: TContext) => void;
         settledCallback(data, error, variables, context?.userContext as TContext);

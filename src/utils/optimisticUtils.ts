@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { ListOperationConfig, OptimisticUpdateConfig } from "../types/optimistic";
+import type { ListOperationConfig, OptimisticUpdateConfig, OptimisticOperationTypeValue } from "../types/optimistic";
 import type { EntityWithId } from "../types/selectors";
 import { ListOperationType } from "../types/optimistic.js";
 export const listUpdater = {
@@ -47,7 +47,16 @@ export function createListOperationConfig<T extends EntityWithId, TOperation ext
           return oldData || [];
       }
     },
-    rollback: config.onRollback ? (previousData: T[], error: Error) => { config.onRollback!(error, { previousData, timestamp: Date.now(), operationType: "update" }); } : undefined,
+    rollback: config.onRollback
+      ? (previousData: T[], error: Error) => {
+          const opType: OptimisticOperationTypeValue = config.operation === ListOperationType.ADD
+            ? "create"
+            : config.operation === ListOperationType.REMOVE
+            ? "delete"
+            : "update";
+          config.onRollback!(error, { previousData, timestamp: Date.now(), operationType: opType });
+        }
+      : undefined,
     enabled: true
   };
 }

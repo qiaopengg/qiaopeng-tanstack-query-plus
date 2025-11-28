@@ -49,3 +49,4 @@ export {
   validateQueryKey
 } from "./keys.js";
 export { createAppQueryOptions, createAppQueryOptionsWithSelect } from "./queryOptions.js";
+export { createListQueryOptions, type ListQueryConfig } from "./queryOptions.js";

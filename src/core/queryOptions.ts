@@ -43,3 +43,23 @@ export function createAppQueryOptionsWithSelect<TData, TSelected = TData>(config
     refetchOnMount: true
   });
 }
+
+export interface ListQueryConfig<TData> extends Omit<BaseQueryConfig<TData>, "staleTime" | "gcTime"> {
+  staleTime?: number;
+  gcTime?: number;
+}
+
+export function createListQueryOptions<TData>(config: ListQueryConfig<TData>): UseQueryOptions<TData, DefaultError, TData, QueryKey> {
+  return queryOptions<TData, DefaultError, TData, QueryKey>({
+    queryKey: config.queryKey,
+    queryFn: config.queryFn,
+    staleTime: config.staleTime ?? 0,
+    gcTime: config.gcTime ?? DEFAULT_GC_TIME,
+    enabled: config.enabled,
+    retry: defaultQueryRetryStrategy,
+    retryDelay: exponentialBackoff,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchOnMount: true
+  });
+}
