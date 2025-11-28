@@ -81,3 +81,17 @@ export function conditionalUpdateItems<T extends EntityWithId>(items: T[] | unde
   const currentItems = items || [];
   return currentItems.map((item) => { if (predicate(item)) { return { ...item, ...updater(item) }; } return item; });
 }
+export function applyListOperationToPaginated<T extends EntityWithId>(data: { items: T[]; total?: number }, operation: ListOperationType, payload: Partial<T>): { items: T[]; total?: number } {
+  let items = data.items || [];
+  if (operation === ListOperationType.ADD) { items = listUpdater.add(items, payload as T); }
+  else if (operation === ListOperationType.UPDATE) { items = listUpdater.update(items, payload as Partial<T> & { id: T["id"] }); }
+  else if (operation === ListOperationType.REMOVE) { const id = (payload as any)?.id; items = listUpdater.remove(items, id); }
+  const total = typeof data.total === "number"
+    ? operation === ListOperationType.ADD
+      ? data.total + 1
+      : operation === ListOperationType.REMOVE
+      ? Math.max(0, data.total - 1)
+      : data.total
+    : data.total;
+  return { ...data, items, total };
+}

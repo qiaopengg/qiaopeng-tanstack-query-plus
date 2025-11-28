@@ -18,4 +18,14 @@ export interface MutationOptions<TData, TError, TVariables, TContext = unknown> 
     familyKey?: QueryKey;
     relatedKeys?: QueryKey[];
   };
+  consistency?: {
+    familySync?: {
+      idField?: string;
+      listSelector?: (data: unknown) => { items: unknown[]; total?: number } | null;
+      writeBack?: (old: unknown, items: unknown[], total?: number) => unknown;
+      maxKeys?: number;
+      enableForOperations?: Array<"update" | "delete">;
+    };
+    mode?: "sync+invalidate" | "invalidate-only";
+  };
 }

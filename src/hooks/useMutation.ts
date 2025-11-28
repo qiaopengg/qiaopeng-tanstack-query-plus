@@ -4,6 +4,7 @@ import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
 export type { MutationKey };
+import { FamilySyncConfig, syncEntityAcrossFamily, DEFAULT_FAMILY_SYNC } from "../utils/consistency.js";
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
 
@@ -25,7 +26,7 @@ function isListFamilyKey(queryKey: QueryKey): boolean {
 
 export function useMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(options: MutationOptions<TData, TError, TVariables, TContext>): UseMutationResult<TData, TError, TVariables, TContext> {
   const queryClient = useQueryClient();
-  const { optimistic, onMutate, onError, onSuccess, onSettled, ...restOptions } = options;
+  const { optimistic, onMutate, onError, onSuccess, onSettled, consistency, ...restOptions } = options as any;
   type MutationCtx = MutationContext<unknown, TContext>;
   const mutationConfig: TanStackUseMutationOptions<TData, TError, TVariables, MutationCtx> = {
     ...restOptions,
@@ -53,8 +54,8 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
           mappedVariables = { ...variables } as TVariables;
           const sourceObj = variables as Record<string, unknown>;
           const targetObj = mappedVariables as Record<string, unknown>;
-          Object.entries(optimistic.fieldMapping).forEach(([sourceField, targetField]) => {
-            if (sourceField in sourceObj) { targetObj[targetField] = sourceObj[sourceField]; }
+          Object.entries(optimistic.fieldMapping as Record<string, string>).forEach(([sourceField, targetField]) => {
+            if (sourceField in sourceObj) { (targetObj as Record<string, any>)[targetField] = sourceObj[sourceField]; }
           });
         }
         queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
@@ -78,6 +79,14 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
     };
     mutationConfig.onSuccess = (data, variables, context) => {
+      const shouldSync = (consistency?.mode ?? "sync+invalidate") === "sync+invalidate";
+      if (shouldSync && optimistic?.queryKey) {
+        const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+        const payload = typeof variables === "object" && variables !== null ? ((variables as any).data ?? variables) : variables;
+        const op = typeof (variables as any)?.operation === "string" ? (variables as any).operation : "update";
+        const cfg = consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
+        syncEntityAcrossFamily(queryClient, familyKey, cfg, op, payload as any);
+      }
       const scope = optimistic.invalidateScope ?? (isListFamilyKey(optimistic.queryKey) ? "family" : "exact");
       const invalidations: Array<Parameters<QueryClient["invalidateQueries"]>[0]> = [];
       if (scope !== "none") {
@@ -89,7 +98,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
         }
       }
       if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
-        optimistic.relatedKeys.forEach((k) => invalidations.push({ queryKey: k }));
+        optimistic.relatedKeys.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
       }
       if (invalidations.length > 0) {
         const seen = new Set<string>();
@@ -126,10 +135,18 @@ export function setupMutationDefaults(queryClient: QueryClient, config: Mutation
   Object.entries(config).forEach(([key, options]) => { queryClient.setMutationDefaults([key], options); });
 }
 
-export function useListMutation<T extends EntityWithId>(mutationFn: MutationFunction<T, { operation: string; data: Partial<T> }>, queryKey: QueryKey, options?: TanStackUseMutationOptions<T, Error, { operation: string; data: Partial<T> }> & { mutationKey?: readonly unknown[] }) {
+export function useListMutation<T extends EntityWithId>(mutationFn: MutationFunction<T, { operation: string; data: Partial<T> }>, queryKey: QueryKey, options?: (TanStackUseMutationOptions<T, Error, { operation: string; data: Partial<T> }> & { mutationKey?: readonly unknown[] }) & { consistency?: { familySync?: FamilySyncConfig; mode?: "sync+invalidate" | "invalidate-only" } }) {
   const queryClient = useQueryClient();
   return useTanStackMutation({
     mutationFn,
+    onSuccess: (_data, variables) => {
+      const mode = options?.consistency?.mode ?? "sync+invalidate";
+      if (mode === "sync+invalidate") {
+        const familyKey = deriveFamilyKey(queryKey);
+        const cfg = options?.consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
+        syncEntityAcrossFamily(queryClient, familyKey, cfg, variables.operation, variables.data);
+      }
+    },
     onSettled: () => {
       const familyKey = deriveFamilyKey(queryKey);
       queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
@@ -200,7 +217,7 @@ export function useConditionalOptimisticMutation<TData = unknown, TError = Error
           }
         }
         if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
-          optimistic.relatedKeys.forEach((k) => invalidations.push({ queryKey: k }));
+          optimistic.relatedKeys.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
         }
         if (invalidations.length > 0) {
           const seen = new Set<string>();
