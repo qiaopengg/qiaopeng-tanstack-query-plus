@@ -28,16 +28,29 @@ function getConsistencyStrategy(mode: string | undefined, op: string) {
   const m = mode ?? "sync+invalidate";
   if (m === "sync-only") return { sync: true, invalidate: false };
   if (m === "invalidate-only") return { sync: false, invalidate: true };
-  if (m === "auto") return { sync: true, invalidate: op === "delete" };
+  // Auto mode: Always sync for immediate UI feedback, and always invalidate for eventual consistency
+  // Note: The invalidation should ideally be delayed to avoid old-data flicker (handled in delay logic)
+  if (m === "auto") return { sync: true, invalidate: true };
   return { sync: true, invalidate: true };
+}
+
+export function invalidateQueriesBatch(queryClient: QueryClient, tasks: any[]) {
+  tasks.forEach(task => queryClient.invalidateQueries(task));
+}
+
+export function cancelQueriesBatch(queryClient: QueryClient, tasks: any[]) {
+  tasks.forEach(task => queryClient.cancelQueries(task));
+}
+
+export function setQueryDataBatch(queryClient: QueryClient, tasks: any[]) {
+  tasks.forEach(task => queryClient.setQueryData(task.queryKey, task.data));
 }
 
 function executeInvalidations(queryClient: QueryClient, tasks: any[]) {
   if (tasks.length === 1) {
     queryClient.invalidateQueries(tasks[0]);
   } else if (tasks.length > 1) {
-    // invalidateQueriesBatch(queryClient, tasks); // Assume simple loop for now as helper is missing context
-    tasks.forEach(task => queryClient.invalidateQueries(task));
+    invalidateQueriesBatch(queryClient, tasks);
   }
 }
 
@@ -156,7 +169,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             return true;
           });
         
-        const delay = consistency?.invalidationDelay ?? 0;
+        const delay = consistency?.invalidationDelay ?? (consistency?.mode === "auto" ? 1000 : 0);
         if (delay > 0) {
           setTimeout(() => executeInvalidations(queryClient, tasks), delay);
         } else {
@@ -209,7 +222,7 @@ export function useListMutation<T extends EntityWithId>(
       const { invalidate } = getConsistencyStrategy(options?.consistency?.mode, variables.operation);
       if (invalidate) {
         const familyKey = deriveFamilyKey(queryKey);
-        const delay = options?.consistency?.invalidationDelay ?? 0;
+        const delay = options?.consistency?.invalidationDelay ?? (options?.consistency?.mode === "auto" ? 1000 : 0);
         if (delay > 0) {
           setTimeout(() => {
              queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
