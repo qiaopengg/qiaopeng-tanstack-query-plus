@@ -79,6 +79,14 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
       try {
         await queryClient.cancelQueries({ queryKey: optimistic.queryKey, exact: true });
+        
+        // Cancel family queries to prevent race conditions:
+        // Ensure no outdated refetches overwrite our optimistic/synced updates
+        if (consistency?.mode !== "invalidate-only") {
+           const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+           await queryClient.cancelQueries({ queryKey: familyKey });
+        }
+
         const previousData = queryClient.getQueryData(optimistic.queryKey);
         let mappedVariables: TVariables = variables;
         if (optimistic.fieldMapping && typeof variables === "object" && variables !== null) {
