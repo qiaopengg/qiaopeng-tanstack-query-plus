@@ -33,8 +33,6 @@ export {
   type MutationKey,
   setQueryDataBatch,
   setupMutationDefaults,
-  useBatchMutation,
-  useConditionalOptimisticMutation,
   useListMutation,
   useMutation
 } from "./useMutation.js";

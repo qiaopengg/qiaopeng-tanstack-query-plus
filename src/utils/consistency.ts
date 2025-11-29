@@ -1,6 +1,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type { EntityWithId } from "../types/selectors";
-import { listUpdater } from "./optimisticUtils.js";
+import { listUpdater, idsAreEqual } from "./optimisticUtils.js";
 
 function ensureArray(key: QueryKey): unknown[] {
   return Array.isArray(key) ? (key as unknown[]) : [key as unknown];
@@ -37,15 +37,6 @@ function deepEqual(a: unknown, b: unknown): boolean {
   }
 
   return false;
-}
-
-/**
- * Loose equality check for IDs (string vs number)
- */
-function idsAreEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === undefined || a === null || b === undefined || b === null) return false;
-  return String(a) === String(b);
 }
 
 export function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
@@ -144,25 +135,13 @@ export function syncEntityAcrossFamily(
     let items = picked.items as EntityWithId[];
     
     if (op === "update" && idValue !== undefined) {
-       // Use custom listUpdater logic but ensure ID matching is robust if listUpdater uses strict equality
-       // Since listUpdater is imported, we should ideally modify it too or handle it here.
-       // For now, let's modify how we find the item index if we were doing it manually, 
-       // but listUpdater is a black box here.
-       // Assuming listUpdater uses strict equality, we might have a problem if we pass '1' and item has 1.
-       // But listUpdater.update usually takes the whole object.
-       
-       // To be safe, we should ensure the payload ID matches the type of the item ID in the list if possible.
-       // Or, we rely on listUpdater being robust.
-       // Let's look at listUpdater implementation later. For now, let's assume we need to fix the ID type in payload if possible.
-       
-       // Actually, the safer way is to find the item using loose equality, get its strict ID, and use that in payload.
-       const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
-       if (existingItem) {
-         const strictId = (existingItem as any)[idField];
-         if (typeof payload === "object") {
-             items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
-         }
-       }
+      const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
+      if (existingItem) {
+        const strictId = (existingItem as any)[idField];
+        if (typeof payload === "object") {
+            items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
+        }
+      }
     } else if (op === "delete" && idValue !== undefined) {
        const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
        if (existingItem) {

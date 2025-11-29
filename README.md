@@ -1046,10 +1046,10 @@ function TodoApp() {
 
 在带分页/筛选/排序的列表中，编辑、新增、删除、状态变更成功后切换 `page/pageSize` 时，可能命中同一资源的另一查询变体，从而短暂显示旧快照。本库提供可选的“家族一致性”能力，保障在成功后切换分页不回退。
 
-- 开启方式：在 `useMutation` 传入 `consistency` 配置（默认关闭，显式启用）
-- 安全默认：`mode: 'invalidate'` 只执行家族失效，确保最终与服务端一致
-- 进阶模式：`mode: 'sync+invalidate'` 先对缓存中已存在的变体按 `id` 合并更新，再统一失效
-- 形状适配：通过 `listSelector` 适配 `{items,total}` 结构；无法识别时自动降级为仅失效
+- 开启方式：在 `useMutation` 传入 `consistency` 配置
+- 默认策略：`mode: 'sync+invalidate'` 先同步更新缓存，再延迟失效，确保 UI 立即响应且最终一致
+- 安全策略：`mode: 'invalidate-only'` 仅执行失效，完全依赖服务端数据（适合非关键数据）
+- 形状适配：通过 `consistency.familySync.listSelector` 适配 `{items,total}` 结构；无法识别时自动降级为仅失效
 
 ```tsx
 import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
@@ -1067,18 +1067,20 @@ function useUpdateProduct({ page, pageSize }) {
 
     // 家族一致性：编辑成功后，保障跨分页/筛选/排序的变体不回退
     consistency: {
-      baseKey: ['products', 'list'],
-      mode: 'sync+invalidate',
-      idField: 'id',
-      // 适配分页对象：提取 items；不确定时返回 null 将仅失效
-      listSelector: (data) => {
-        if (data && typeof data === 'object' && 'items' in (data as any)) {
-          return { items: (data as any).items, total: (data as any).total }
-        }
-        if (Array.isArray(data)) return { items: data }
-        return null
-      },
-      maxKeys: 50,
+      mode: 'sync+invalidate', // 默认值，先同步缓存再延迟失效
+      invalidationDelay: 1000, // 延迟失效，等待后端一致性
+      familySync: {
+        idField: 'id',
+        // 适配分页对象：提取 items；不确定时返回 null 将仅失效
+        listSelector: (data) => {
+          if (data && typeof data === 'object' && 'items' in (data as any)) {
+            return { items: (data as any).items, total: (data as any).total }
+          }
+          if (Array.isArray(data)) return { items: data }
+          return null
+        },
+        maxKeys: 50,
+      }
     },
   })
 }

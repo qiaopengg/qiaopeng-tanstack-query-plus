@@ -237,46 +237,4 @@ export function useListMutation<T extends EntityWithId>(
   });
 }
 
-export function useBatchMutation<TData = unknown, TError = Error, TVariables = unknown[]>(mutationFn: MutationFunction<TData[], TVariables>, options?: TanStackUseMutationOptions<TData[], TError, TVariables> & { mutationKey?: readonly unknown[] }) {
-  return useTanStackMutation({ mutationFn, ...options, mutationKey: options?.mutationKey });
-}
 
-export function useConditionalOptimisticMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(
-  mutationFn: MutationFunction<TData, TVariables>,
-  condition: (variables: TVariables) => boolean,
-  options?: Omit<MutationOptions<TData, TError, TVariables, TContext>, "mutationFn"> & { mutationKey?: readonly unknown[] }
-) {
-  const queryClient = useQueryClient();
-  const { mutationKey, optimistic, onMutate, onError, onSettled, onSuccess } = options || {};
-  type MutationCtx = MutationContext<unknown, TContext>;
-  const mutationConfig: TanStackUseMutationOptions<TData, TError, TVariables, MutationCtx> = { mutationKey, mutationFn };
-  if (optimistic) {
-    mutationConfig.onMutate = async (variables: TVariables) => {
-      const conditionMet = condition(variables);
-      if (!conditionMet || optimistic.enabled === false) {
-        const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
-        const userContext = onMutate ? await mutateCallback(variables) : undefined;
-        return { userContext, conditionMet: false } as any;
-      }
-      try {
-        await queryClient.cancelQueries({ queryKey: optimistic.queryKey, exact: true });
-        // Note: Simplified conditional optimistic implementation
-        // Does not include the full consistency logic of useMutation for brevity, but could be added if needed.
-        const previousData = queryClient.getQueryData(optimistic.queryKey);
-        const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
-        const userContext = onMutate ? await mutateCallback(variables) : undefined;
-        return { previousData, userContext } as MutationCtx;
-      } catch (error) {
-        return { userContext: undefined } as MutationCtx;
-      }
-    };
-    // ... simplified handlers ...
-    mutationConfig.onSettled = (data, error, variables, context) => {
-      if (onSettled) {
-        const settledCallback = onSettled as (d: TData | undefined, err: TError | null, vars: TVariables, ctx: TContext) => void;
-        settledCallback(data, error, variables, context?.userContext as TContext);
-      }
-    };
-  }
-  return useTanStackMutation(mutationConfig) as UseMutationResult<TData, TError, TVariables, TContext>;
-}

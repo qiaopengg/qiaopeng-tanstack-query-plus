@@ -2,10 +2,19 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { ListOperationConfig, OptimisticUpdateConfig, OptimisticOperationTypeValue } from "../types/optimistic";
 import type { EntityWithId } from "../types/selectors";
 import { ListOperationType } from "../types/optimistic.js";
+/**
+ * Loose equality check for IDs (string vs number)
+ */
+export function idsAreEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === undefined || a === null || b === undefined || b === null) return false;
+  return String(a) === String(b);
+}
+
 export const listUpdater = {
   add: <T extends EntityWithId>(items: T[] | undefined, newItem: T): T[] => {
     const currentItems = items || [];
-    const existingIndex = currentItems.findIndex((item) => item.id === newItem.id);
+    const existingIndex = currentItems.findIndex((item) => idsAreEqual(item.id, newItem.id));
     if (existingIndex >= 0) {
       const updatedItems = [...currentItems];
       updatedItems[existingIndex] = newItem;
@@ -15,11 +24,11 @@ export const listUpdater = {
   },
   update: <T extends EntityWithId>(items: T[] | undefined, updatedItem: Partial<T> & { id: T["id"] }): T[] => {
     const currentItems = items || [];
-    return currentItems.map((item) => (item.id === updatedItem.id ? { ...item, ...updatedItem } : item));
+    return currentItems.map((item) => (idsAreEqual(item.id, updatedItem.id) ? { ...item, ...updatedItem } : item));
   },
   remove: <T extends EntityWithId>(items: T[] | undefined, itemId: T["id"]): T[] => {
     const currentItems = items || [];
-    return currentItems.filter((item) => item.id !== itemId);
+    return currentItems.filter((item) => !idsAreEqual(item.id, itemId));
   }
 };
 export function createAddItemConfig<T extends EntityWithId>(queryKey: QueryKey, options?: { addToTop?: boolean; onRollback?: (error: Error) => void }): OptimisticUpdateConfig<T[], T> {
