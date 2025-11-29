@@ -6,7 +6,7 @@ export * from "./optimistic.js";
 export * from "./persistence.js";
 export * from "./selectors.js";
 export * from "./suspense.js";
-export interface MutationContext<TData = unknown, TContext = unknown> { previousData?: TData; userContext?: TContext; conditionMet?: boolean }
+export interface MutationContext<TData = unknown, TContext = unknown> { previousData?: TData; userContext?: TContext; conditionMet?: boolean; familyRollbackData?: Array<{ queryKey: QueryKey; previousData: unknown }>; }
 export interface MutationOptions<TData, TError, TVariables, TContext = unknown> extends UseMutationOptions<TData, TError, TVariables, TContext> {
   optimistic?: {
     queryKey: QueryKey;
@@ -17,6 +17,7 @@ export interface MutationOptions<TData, TError, TVariables, TContext = unknown> 
     invalidateScope?: "none" | "exact" | "family";
     familyKey?: QueryKey;
     relatedKeys?: QueryKey[];
+    invalidates?: QueryKey[];
   };
   consistency?: {
     familySync?: {

@@ -4,7 +4,7 @@ import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
 export type { MutationKey };
-import { FamilySyncConfig, syncEntityAcrossFamily, DEFAULT_FAMILY_SYNC } from "../utils/consistency.js";
+import { FamilySyncConfig, syncEntityAcrossFamily, syncEntityAcrossFamilyOptimistic, DEFAULT_FAMILY_SYNC } from "../utils/consistency.js";
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
 
@@ -59,9 +59,20 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
           });
         }
         queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
+
+        let familyRollbackData: Array<{ queryKey: QueryKey; previousData: unknown }> = [];
+        const shouldSync = (consistency?.mode ?? "sync+invalidate") === "sync+invalidate";
+        if (shouldSync && optimistic?.queryKey) {
+           const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+           const payload = typeof variables === "object" && variables !== null ? ((variables as any).data ?? variables) : variables;
+           const op = typeof (variables as any)?.operation === "string" ? (variables as any).operation : "update";
+           const cfg = consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
+           familyRollbackData = syncEntityAcrossFamilyOptimistic(queryClient, familyKey, cfg, op, payload as any);
+        }
+
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
-        return { previousData, userContext } as MutationCtx;
+        return { previousData, userContext, familyRollbackData } as MutationCtx;
       } catch (error) {
         return { userContext: undefined } as MutationCtx;
       }
@@ -69,6 +80,11 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
     mutationConfig.onError = (error, variables, context) => {
       if (context?.previousData !== undefined) {
         queryClient.setQueryData(optimistic.queryKey, context.previousData);
+      }
+      if (context?.familyRollbackData) {
+        context.familyRollbackData.forEach(item => {
+            queryClient.setQueryData(item.queryKey, item.previousData);
+        });
       }
       if (optimistic.rollback && context?.previousData !== undefined) {
         try { optimistic.rollback(context.previousData, error as Error); } catch {}
@@ -99,6 +115,9 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
       if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
         optimistic.relatedKeys.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
+      }
+      if (Array.isArray(optimistic.invalidates) && optimistic.invalidates.length > 0) {
+        optimistic.invalidates.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
       }
       if (invalidations.length > 0) {
         const seen = new Set<string>();
