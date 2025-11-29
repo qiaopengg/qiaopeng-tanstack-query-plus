@@ -5,7 +5,6 @@ import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/re
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
 export type { MutationKey };
 import { FamilySyncConfig, syncEntityAcrossFamily, syncEntityAcrossFamilyOptimistic, DEFAULT_FAMILY_SYNC } from "../utils/consistency.js";
-import { scheduleInvalidations } from "../utils/invalidationManager.js";
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
 
@@ -172,7 +171,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
         
         const delay = consistency?.invalidationDelay ?? (consistency?.mode === "auto" ? 1000 : 0);
         if (delay > 0) {
-          scheduleInvalidations(queryClient, tasks, delay);
+          setTimeout(() => executeInvalidations(queryClient, tasks), delay);
         } else {
           executeInvalidations(queryClient, tasks);
         }
@@ -225,7 +224,9 @@ export function useListMutation<T extends EntityWithId>(
         const familyKey = deriveFamilyKey(queryKey);
         const delay = options?.consistency?.invalidationDelay ?? (options?.consistency?.mode === "auto" ? 1000 : 0);
         if (delay > 0) {
-          scheduleInvalidations(queryClient, [{ queryKey: familyKey, exact: false }], delay);
+          setTimeout(() => {
+             queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
+          }, delay);
         } else {
           queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
         }

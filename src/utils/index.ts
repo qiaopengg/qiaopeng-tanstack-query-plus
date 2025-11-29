@@ -1,5 +1,4 @@
 export { createFieldEnricher, createOptimisticBase, createTempId, type FieldMappingConfig } from "./fieldMapper.js";
-export * from "./invalidationManager.js";
 export { getNetworkInfo, getNetworkSpeed, isFastNetwork, isSlowNetwork, type NavigatorWithConnection } from "./network.js";
 export { batchRemoveItems, batchUpdateItems, conditionalUpdateItems, createAddItemConfig, createListOperationConfig, createRemoveItemConfig, createUpdateItemConfig, type ListOperationVariables, listUpdater, reorderItems } from "./optimisticUtils.js";
 export { keepPreviousData } from "./placeholderData.js";
