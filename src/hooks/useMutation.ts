@@ -93,7 +93,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
 
         let familyRollbackData: Array<{ queryKey: QueryKey; previousData: unknown }> = [];
         
-        const op = typeof (variables as any)?.operation === "string" ? (variables as any).operation : "update";
+        const op = (typeof (variables as any)?.operation === "string" ? (variables as any).operation : consistency?.defaultOperation) ?? "update";
         const { sync } = getConsistencyStrategy(consistency?.mode, op);
         
         if (sync && optimistic?.queryKey) {
@@ -128,7 +128,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
       }
     };
     mutationConfig.onSuccess = (data, variables, context) => {
-      const op = typeof (variables as any)?.operation === "string" ? (variables as any).operation : "update";
+      const op = (typeof (variables as any)?.operation === "string" ? (variables as any).operation : consistency?.defaultOperation) ?? "update";
       const { sync, invalidate } = getConsistencyStrategy(consistency?.mode, op);
 
       if (sync && optimistic?.queryKey) {

@@ -36,6 +36,11 @@ export interface MutationOptions<TData, TError, TVariables, TContext = unknown> 
      */
     mode?: "sync+invalidate" | "invalidate-only" | "sync-only" | "auto";
     /**
+     * Default operation type if not provided in variables.
+     * Useful for useMutation where variables might not contain operation info.
+     */
+    defaultOperation?: "create" | "update" | "delete";
+    /**
      * Delay in milliseconds before invalidating queries.
      * Useful for eventually consistent backends (e.g. ElasticSearch).
      * Default: 0

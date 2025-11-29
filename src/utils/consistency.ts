@@ -140,7 +140,7 @@ export function syncEntityAcrossFamily(
     const picked = (cfg.listSelector ?? defaultListSelector)(old);
     if (!picked || !Array.isArray(picked.items)) return;
 
-    const idValue = (payload as any)?.[idField];
+    const idValue = (typeof payload === "string" || typeof payload === "number") ? payload : (payload as any)?.[idField];
     let items = picked.items as EntityWithId[];
     
     if (op === "update" && idValue !== undefined) {
@@ -159,7 +159,9 @@ export function syncEntityAcrossFamily(
        const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
        if (existingItem) {
          const strictId = (existingItem as any)[idField];
-         items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
+         if (typeof payload === "object") {
+             items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
+         }
        }
     } else if (op === "delete" && idValue !== undefined) {
        const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
@@ -199,7 +201,7 @@ export function syncEntityAcrossFamilyOptimistic(
     const picked = (cfg.listSelector ?? defaultListSelector)(old);
     if (!picked || !Array.isArray(picked.items)) return;
 
-    const idValue = (payload as any)?.[idField];
+    const idValue = (typeof payload === "string" || typeof payload === "number") ? payload : (payload as any)?.[idField];
     let items = picked.items as EntityWithId[];
     let shouldUpdate = false;
 
@@ -210,8 +212,10 @@ export function syncEntityAcrossFamilyOptimistic(
       if (existingItem) {
         const strictId = (existingItem as any)[idField];
         // Ensure payload uses the correct ID type from the store
-        items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
-        shouldUpdate = true;
+        if (typeof payload === "object") {
+            items = listUpdater.update(items, { ...(payload as any), [idField]: strictId } as any) as any;
+            shouldUpdate = true;
+        }
       }
     } else if (op === "delete" && idValue !== undefined) {
       const existingItem = items.find(item => idsAreEqual((item as any)[idField], idValue));
