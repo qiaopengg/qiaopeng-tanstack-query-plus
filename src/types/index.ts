@@ -27,6 +27,19 @@ export interface MutationOptions<TData, TError, TVariables, TContext = unknown> 
       maxKeys?: number;
       enableForOperations?: Array<"update" | "delete">;
     };
-    mode?: "sync+invalidate" | "invalidate-only";
+    /**
+     * Consistency strategy:
+     * - "sync+invalidate": Update cache locally AND invalidate queries (default).
+     * - "sync-only": Update cache locally only (use when server is eventually consistent and you trust the client).
+     * - "invalidate-only": Do not update cache locally, just invalidate.
+     * - "auto": "sync-only" for updates, "sync+invalidate" for deletes.
+     */
+    mode?: "sync+invalidate" | "invalidate-only" | "sync-only" | "auto";
+    /**
+     * Delay in milliseconds before invalidating queries.
+     * Useful for eventually consistent backends (e.g. ElasticSearch).
+     * Default: 0
+     */
+    invalidationDelay?: number;
   };
 }
