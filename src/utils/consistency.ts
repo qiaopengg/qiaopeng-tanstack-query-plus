@@ -122,10 +122,10 @@ export function syncEntityAcrossFamily(
 
   const idField = cfg.idField ?? "id";
   const cache = queryClient.getQueryCache();
-  const queries = cache.findAll({ predicate: (q) => startsWithKeyPrefix(q.queryKey as unknown[], familyPrefix) });
+  const queries = cache.findAll({ predicate: (q: any) => startsWithKeyPrefix(q.queryKey as unknown[], familyPrefix) });
   const limited = typeof cfg.maxKeys === "number" && cfg.maxKeys > 0 ? queries.slice(0, cfg.maxKeys) : queries;
 
-  limited.forEach((q) => {
+  limited.forEach((q: any) => {
     const key = q.queryKey as QueryKey;
     const old = queryClient.getQueryData(key);
     const picked = (cfg.listSelector ?? defaultListSelector)(old);
@@ -170,10 +170,10 @@ export function syncEntityAcrossFamilyOptimistic(
 
   const idField = cfg.idField ?? "id";
   const cache = queryClient.getQueryCache();
-  const queries = cache.findAll({ predicate: (q) => startsWithKeyPrefix(q.queryKey as unknown[], familyPrefix) });
+  const queries = cache.findAll({ predicate: (q: any) => startsWithKeyPrefix(q.queryKey as unknown[], familyPrefix) });
   const limited = typeof cfg.maxKeys === "number" && cfg.maxKeys > 0 ? queries.slice(0, cfg.maxKeys) : queries;
 
-  limited.forEach((q) => {
+  limited.forEach((q: any) => {
     const key = q.queryKey as QueryKey;
     const old = queryClient.getQueryData(key);
 
