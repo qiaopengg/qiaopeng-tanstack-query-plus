@@ -52,3 +52,5 @@ export {
 } from "./usePrefetch.js";
 export { skipToken, useEnhancedQuery, type EnhancedQueryOptions, type EnhancedQueryResult } from "./useQuery.js";
 export { createSuspenseInfiniteQuery, createSuspenseQuery, useEnhancedSuspenseInfiniteQuery, useEnhancedSuspenseQuery } from "./useSuspenseQuery.js";
+export { useDataGuardQueryConfig } from "./useDataGuardQuery.js";
+export { useDataGuardMutation, type DataGuardMutationOptions } from "./useDataGuardMutation.js";

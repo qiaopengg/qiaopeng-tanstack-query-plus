@@ -7,3 +7,4 @@ export { createQueryKeyFactory, createSimpleQueryKeyFactory, extractParamsFromKe
 export { compose, selectById, selectByIds, selectCount, selectField, selectFields, selectFirst, selectItems, selectLast, selectMap, selectors, selectTotal, selectWhere } from "./selectors.js";
 export { deepClone, formatBytes, getStorageUsage, isStorageAvailable } from "./storage.js";
 export { startsWithKeyPrefix, syncEntityAcrossFamily, DEFAULT_FAMILY_SYNC, type FamilySyncConfig } from "./consistency.js";
+export { applyDataGuard, addHashToData, hashObject, markRecentlyUpdated, clearRecentlyUpdated, updateFamilyMetadata } from "./dataGuard.js";

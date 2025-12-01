@@ -1,5 +1,6 @@
 import type { QueryKey, UseMutationOptions } from "@tanstack/react-query";
 export * from "./base.js";
+export * from "./dataGuard.js";
 export * from "./infinite.js";
 export * from "./offline.js";
 export * from "./optimistic.js";
