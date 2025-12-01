@@ -92,18 +92,18 @@ export function useDataGuardMutation<
       // 标记最近更新的项
       const withMark = markRecentlyUpdated(updated, variables.id);
 
-      // 乐观更新版本号
-      if (old.version !== undefined) {
+      // 乐观更新版本号（安全检查：确保 old 存在）
+      if (old && old.version !== undefined) {
         withMark.version = old.version + 1;
       }
 
-      // 乐观更新时间戳
-      if (old.updatedAt !== undefined) {
+      // 乐观更新时间戳（安全检查：确保 old 存在）
+      if (old && old.updatedAt !== undefined) {
         withMark.updatedAt = new Date().toISOString();
       }
 
-      // 更新哈希
-      if (old._hash !== undefined) {
+      // 更新哈希（安全检查：确保 old 存在）
+      if (old && old._hash !== undefined) {
         withMark._hash = hashObject(withMark.items);
       }
 
