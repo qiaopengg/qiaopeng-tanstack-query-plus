@@ -113,34 +113,44 @@ export function useDataGuardMutation<
 
   // 增强的成功回调
   const enhancedOnSuccess = (data: TData, variables: TVariables, onMutateResult: any, context: any) => {
-    // 更新所有家族缓存的元数据
-    const familyKey = Array.isArray(queryKey) ? queryKey.slice(0, -1) : [queryKey];
-    updateFamilyMetadata<TData>(queryClient, familyKey, data);
+    try {
+      // 更新所有家族缓存的元数据
+      const familyKey = Array.isArray(queryKey) ? queryKey.slice(0, -1) : [queryKey];
+      updateFamilyMetadata<TData>(queryClient, familyKey, data);
 
-    // 计算清理延迟时间（基于 invalidationDelay + 缓冲时间）
-    const invalidationDelay = options?.consistency?.invalidationDelay || 3000;
-    const cleanupDelay = invalidationDelay + 2000;  // 在失效后2秒清理
+      // 计算清理延迟时间（基于 invalidationDelay + 缓冲时间）
+      const invalidationDelay = options?.consistency?.invalidationDelay || 3000;
+      const cleanupDelay = invalidationDelay + 2000;  // 在失效后2秒清理
 
-    // 延迟清理最近更新标记
-    setTimeout(() => {
-      // 检查 variables.id 是否存在
-      if (variables.id === undefined || variables.id === null) {
-        return;
-      }
+      // 延迟清理最近更新标记
+      setTimeout(() => {
+        try {
+          // 检查 variables.id 是否存在
+          if (variables.id === undefined || variables.id === null) {
+            return;
+          }
 
-      const cache = queryClient.getQueryCache();
-      const queries = cache.findAll({
-        predicate: (q: any) => startsWithKeyPrefix(q.queryKey as QueryKey, familyKey)
-      });
+          const cache = queryClient.getQueryCache();
+          const queries = cache.findAll({
+            predicate: (q: any) => startsWithKeyPrefix(q.queryKey as QueryKey, familyKey)
+          });
 
-      queries.forEach((q: any) => {
-        const old = queryClient.getQueryData<VersionedPaginatedResponse<TData>>(q.queryKey);
-        if (old?._recentlyUpdatedIds) {
-          const cleared = clearRecentlyUpdated(old, variables.id);
-          queryClient.setQueryData(q.queryKey, cleared);
+          queries.forEach((q: any) => {
+            const old = queryClient.getQueryData<VersionedPaginatedResponse<TData>>(q.queryKey);
+            if (old?._recentlyUpdatedIds) {
+              const cleared = clearRecentlyUpdated(old, variables.id);
+              queryClient.setQueryData(q.queryKey, cleared);
+            }
+          });
+        } catch (error) {
+          // 清理标记失败不应该影响用户操作
+          console.warn('[Data Guard] 清理更新标记失败', error);
         }
-      });
-    }, cleanupDelay);
+      }, cleanupDelay);
+    } catch (error) {
+      // 元数据更新失败不应该影响用户操作
+      console.warn('[Data Guard] 更新元数据失败', error);
+    }
 
     // 调用用户的 onSuccess
     onSuccess?.(data, variables, onMutateResult, context);

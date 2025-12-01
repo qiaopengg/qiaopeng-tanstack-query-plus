@@ -288,8 +288,8 @@ export function updateFamilyMetadata<T extends VersionedEntity>(
         updated.updatedAt = new Date().toISOString();
       }
 
-      // 更新哈希
-      if (old._hash !== undefined) {
+      // 更新哈希（安全检查：确保 items 存在）
+      if (old._hash !== undefined && updated.items) {
         updated._hash = hashObject(updated.items);
       }
 
