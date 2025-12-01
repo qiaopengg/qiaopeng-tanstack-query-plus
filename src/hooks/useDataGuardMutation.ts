@@ -143,13 +143,11 @@ export function useDataGuardMutation<
             }
           });
         } catch (error) {
-          // 清理标记失败不应该影响用户操作
-          console.warn('[Data Guard] 清理更新标记失败', error);
+          // 清理标记失败不应该影响用户操作（静默处理）
         }
       }, cleanupDelay);
     } catch (error) {
-      // 元数据更新失败不应该影响用户操作
-      console.warn('[Data Guard] 更新元数据失败', error);
+      // 元数据更新失败不应该影响用户操作（静默处理）
     }
 
     // 调用用户的 onSuccess
