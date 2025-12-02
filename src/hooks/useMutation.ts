@@ -4,7 +4,6 @@ import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
 export type { MutationKey };
-import { FamilySyncConfig, syncEntityAcrossFamily, syncEntityAcrossFamilyOptimistic, DEFAULT_FAMILY_SYNC } from "../utils/consistency.js";
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
 
@@ -24,16 +23,6 @@ function isListFamilyKey(queryKey: QueryKey): boolean {
   return parts.includes("list") || parts.includes("paginated");
 }
 
-function getConsistencyStrategy(mode: string | undefined, op: string) {
-  const m = mode ?? "sync+invalidate";
-  if (m === "sync-only") return { sync: true, invalidate: false };
-  if (m === "invalidate-only") return { sync: false, invalidate: true };
-  // Auto mode: Always sync for immediate UI feedback, and always invalidate for eventual consistency
-  // Note: The invalidation should ideally be delayed to avoid old-data flicker (handled in delay logic)
-  if (m === "auto") return { sync: true, invalidate: true };
-  return { sync: true, invalidate: true };
-}
-
 export function invalidateQueriesBatch(queryClient: QueryClient, tasks: any[]) {
   tasks.forEach(task => queryClient.invalidateQueries(task));
 }
@@ -46,17 +35,9 @@ export function setQueryDataBatch(queryClient: QueryClient, tasks: any[]) {
   tasks.forEach(task => queryClient.setQueryData(task.queryKey, task.data));
 }
 
-function executeInvalidations(queryClient: QueryClient, tasks: any[]) {
-  if (tasks.length === 1) {
-    queryClient.invalidateQueries(tasks[0]);
-  } else if (tasks.length > 1) {
-    invalidateQueriesBatch(queryClient, tasks);
-  }
-}
-
 export function useMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(options: MutationOptions<TData, TError, TVariables, TContext>): UseMutationResult<TData, TError, TVariables, TContext> {
   const queryClient = useQueryClient();
-  const { optimistic, onMutate, onError, onSuccess, onSettled, consistency, ...restOptions } = options as any;
+  const { optimistic, onMutate, onError, onSuccess, onSettled, ...restOptions } = options as any;
   type MutationCtx = MutationContext<unknown, TContext>;
   const mutationConfig: TanStackUseMutationOptions<TData, TError, TVariables, MutationCtx> = {
     ...restOptions,
@@ -78,16 +59,16 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
         return { userContext } as MutationCtx;
       }
       try {
-        await queryClient.cancelQueries({ queryKey: optimistic.queryKey, exact: true });
+        // Derive family key (e.g., ['products', 'list'] from ['products', 'list', { page: 1, pageSize: 10 }])
+        const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
         
-        // Cancel family queries to prevent race conditions:
-        // Ensure no outdated refetches overwrite our optimistic/synced updates
-        if (consistency?.mode !== "invalidate-only") {
-           const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
-           await queryClient.cancelQueries({ queryKey: familyKey });
-        }
+        // Cancel all queries in the family to prevent race conditions
+        await queryClient.cancelQueries({ queryKey: familyKey });
 
-        const previousData = queryClient.getQueryData(optimistic.queryKey);
+        // Save snapshots of all queries in the family
+        const previousData = queryClient.getQueriesData({ queryKey: familyKey });
+
+        // Apply field mapping if specified
         let mappedVariables: TVariables = variables;
         if (optimistic.fieldMapping && typeof variables === "object" && variables !== null) {
           mappedVariables = { ...variables } as TVariables;
@@ -97,75 +78,71 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             if (sourceField in sourceObj) { (targetObj as Record<string, any>)[targetField] = sourceObj[sourceField]; }
           });
         }
-        queryClient.setQueryData(optimistic.queryKey, (oldData: unknown | undefined) => optimistic.updater(oldData, mappedVariables));
 
-        let familyRollbackData: Array<{ queryKey: QueryKey; previousData: unknown }> = [];
-        
-        const op = (typeof (variables as any)?.operation === "string" ? (variables as any).operation : consistency?.defaultOperation) ?? "update";
-        const { sync } = getConsistencyStrategy(consistency?.mode, op);
-        
-        if (sync && optimistic?.queryKey) {
-           const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
-           const payload = typeof variables === "object" && variables !== null ? ((variables as any).data ?? variables) : variables;
-           const cfg = consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
-           familyRollbackData = syncEntityAcrossFamilyOptimistic(queryClient, familyKey, cfg, op, payload as any);
-        }
+        // ✅ Official approach: Update all cached query variants using setQueriesData
+        queryClient.setQueriesData(
+          { queryKey: familyKey },
+          (oldData: unknown | undefined) => {
+            if (!oldData) return oldData;
+            return optimistic.updater(oldData, mappedVariables);
+          }
+        );
 
         const mutateCallback = onMutate as (vars: TVariables) => Promise<TContext | undefined>;
         const userContext = onMutate ? await mutateCallback(variables) : undefined;
-        return { previousData, userContext, familyRollbackData } as MutationCtx;
+        return { previousData, userContext } as MutationCtx;
       } catch (error) {
         return { userContext: undefined } as MutationCtx;
       }
     };
+    
     mutationConfig.onError = (error, variables, context) => {
-      if (context?.previousData !== undefined) {
-        queryClient.setQueryData(optimistic.queryKey, context.previousData);
-      }
-      if (context?.familyRollbackData) {
-        context.familyRollbackData.forEach(item => {
-            queryClient.setQueryData(item.queryKey, item.previousData);
+      // Rollback all query variants
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]: [QueryKey, any]) => {
+          queryClient.setQueryData(queryKey, data);
         });
       }
-      if (optimistic.rollback && context?.previousData !== undefined) {
-        try { optimistic.rollback(context.previousData, error as Error); } catch {}
+      
+      if (optimistic.rollback && context?.previousData) {
+        try { 
+          // Call rollback with the first snapshot (usually the current query)
+          const firstSnapshot = context.previousData[0]?.[1];
+          if (firstSnapshot) {
+            optimistic.rollback(firstSnapshot, error as Error); 
+          }
+        } catch {}
       }
+      
       if (onError) {
         const errorCallback = onError as (err: TError, vars: TVariables, ctx: TContext) => void;
         errorCallback(error, variables, context?.userContext as TContext);
       }
     };
+    
     mutationConfig.onSuccess = (data, variables, context) => {
-      const op = (typeof (variables as any)?.operation === "string" ? (variables as any).operation : consistency?.defaultOperation) ?? "update";
-      const { sync, invalidate } = getConsistencyStrategy(consistency?.mode, op);
-
-      if (sync && optimistic?.queryKey) {
-        const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
-        const payload = typeof variables === "object" && variables !== null ? ((variables as any).data ?? variables) : variables;
-        const cfg = consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
-        syncEntityAcrossFamily(queryClient, familyKey, cfg, op, payload as any);
-      }
-
+      // Determine invalidation scope
       const scope = optimistic.invalidateScope ?? (isListFamilyKey(optimistic.queryKey) ? "family" : "exact");
       const invalidations: Array<Parameters<QueryClient["invalidateQueries"]>[0]> = [];
       
-      if (invalidate) {
-        if (scope !== "none") {
-          if (scope === "family") {
-            const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
-            invalidations.push({ queryKey: familyKey });
-          } else {
-            invalidations.push({ queryKey: optimistic.queryKey });
-          }
-        }
-        if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
-          optimistic.relatedKeys.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
-        }
-        if (Array.isArray(optimistic.invalidates) && optimistic.invalidates.length > 0) {
-          optimistic.invalidates.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
+      if (scope !== "none") {
+        if (scope === "family") {
+          const familyKey = optimistic.familyKey ?? deriveFamilyKey(optimistic.queryKey);
+          invalidations.push({ queryKey: familyKey });
+        } else {
+          invalidations.push({ queryKey: optimistic.queryKey });
         }
       }
+      
+      // Add related keys
+      if (Array.isArray(optimistic.relatedKeys) && optimistic.relatedKeys.length > 0) {
+        optimistic.relatedKeys.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
+      }
+      if (Array.isArray(optimistic.invalidates) && optimistic.invalidates.length > 0) {
+        optimistic.invalidates.forEach((k: QueryKey) => invalidations.push({ queryKey: k }));
+      }
 
+      // Execute invalidations (deduplicated)
       if (invalidations.length > 0) {
         const seen = new Set<string>();
         const tasks = invalidations
@@ -177,12 +154,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
             return true;
           });
         
-        const delay = consistency?.invalidationDelay ?? (consistency?.mode === "auto" ? 1000 : 0);
-        if (delay > 0) {
-          setTimeout(() => executeInvalidations(queryClient, tasks), delay);
-        } else {
-          executeInvalidations(queryClient, tasks);
-        }
+        tasks.forEach(task => queryClient.invalidateQueries(task));
       }
 
       if (onSuccess) {
@@ -190,6 +162,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
         successCallback(data, variables, context?.userContext as TContext);
       }
     };
+    
     mutationConfig.onSettled = (data, error, variables, context) => {
       if (onSettled) {
         const settledCallback = onSettled as (d: TData | undefined, err: TError | null, vars: TVariables, ctx: TContext) => void;
@@ -207,38 +180,15 @@ export function setupMutationDefaults(queryClient: QueryClient, config: Mutation
 export function useListMutation<T extends EntityWithId>(
   mutationFn: MutationFunction<T, { operation: string; data: Partial<T> }>, 
   queryKey: QueryKey, 
-  options?: (TanStackUseMutationOptions<T, Error, { operation: string; data: Partial<T> }> & { mutationKey?: readonly unknown[] }) & { 
-    consistency?: { 
-      familySync?: FamilySyncConfig; 
-      mode?: "sync+invalidate" | "invalidate-only" | "sync-only" | "auto";
-      invalidationDelay?: number;
-    } 
-  }
+  options?: TanStackUseMutationOptions<T, Error, { operation: string; data: Partial<T> }> & { mutationKey?: readonly unknown[] }
 ) {
   const queryClient = useQueryClient();
   return useTanStackMutation({
     mutationFn,
-    onSuccess: (_data, variables) => {
-      const { sync } = getConsistencyStrategy(options?.consistency?.mode, variables.operation);
-      if (sync) {
-        const familyKey = deriveFamilyKey(queryKey);
-        const cfg = options?.consistency?.familySync ?? DEFAULT_FAMILY_SYNC;
-        syncEntityAcrossFamily(queryClient, familyKey, cfg, variables.operation, variables.data);
-      }
-    },
-    onSettled: (data, error, variables) => {
-      const { invalidate } = getConsistencyStrategy(options?.consistency?.mode, variables.operation);
-      if (invalidate) {
-        const familyKey = deriveFamilyKey(queryKey);
-        const delay = options?.consistency?.invalidationDelay ?? (options?.consistency?.mode === "auto" ? 1000 : 0);
-        if (delay > 0) {
-          setTimeout(() => {
-             queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
-          }, delay);
-        } else {
-          queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
-        }
-      }
+    onSettled: () => {
+      // Invalidate all queries in the family
+      const familyKey = deriveFamilyKey(queryKey);
+      queryClient.invalidateQueries({ queryKey: familyKey, exact: false });
     },
     ...options,
     mutationKey: options?.mutationKey

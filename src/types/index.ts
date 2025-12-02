@@ -7,45 +7,46 @@ export * from "./optimistic.js";
 export * from "./persistence.js";
 export * from "./selectors.js";
 export * from "./suspense.js";
-export interface MutationContext<TData = unknown, TContext = unknown> { previousData?: TData; userContext?: TContext; conditionMet?: boolean; familyRollbackData?: Array<{ queryKey: QueryKey; previousData: unknown }>; }
+export interface MutationContext<TData = unknown, TContext = unknown> { 
+  /** Snapshots of all query variants (from getQueriesData) */
+  previousData?: Array<[QueryKey, any]>; 
+  /** User-provided context from onMutate */
+  userContext?: TContext; 
+  /** For conditional mutations */
+  conditionMet?: boolean; 
+}
+/**
+ * Enhanced mutation options using official TanStack Query approach
+ * 
+ * Uses setQueriesData to update all cached query variants automatically.
+ * This prevents data rollback and flicker when switching between pageSize, filters, etc.
+ * 
+ * Recommended: Use long staleTime (5+ minutes) in your queries for best results.
+ */
 export interface MutationOptions<TData, TError, TVariables, TContext = unknown> extends UseMutationOptions<TData, TError, TVariables, TContext> {
   optimistic?: {
+    /** Query key to update (will also update all variants in the same family) */
     queryKey: QueryKey;
+    /** Function to update the cached data - will be applied to all query variants */
     updater: <TQueryData = unknown>(oldData: TQueryData | undefined, variables: TVariables) => TQueryData | undefined;
+    /** Enable/disable optimistic updates */
     enabled?: boolean;
+    /** Map mutation variable fields to cache data fields */
     fieldMapping?: Record<string, string>;
+    /** Callback when rollback occurs on error */
     rollback?: <TQueryData = unknown>(previousData: TQueryData, error: Error) => void;
+    /** 
+     * Invalidation scope after success:
+     * - "exact": Only invalidate the exact queryKey
+     * - "family": Invalidate all queries in the family (default for list queries)
+     * - "none": Don't invalidate (rely on optimistic update only)
+     */
     invalidateScope?: "none" | "exact" | "family";
+    /** Override the derived family key (e.g., ['products', 'list']) */
     familyKey?: QueryKey;
+    /** Additional query keys to invalidate */
     relatedKeys?: QueryKey[];
+    /** Alias for relatedKeys */
     invalidates?: QueryKey[];
-  };
-  consistency?: {
-    familySync?: {
-      idField?: string;
-      listSelector?: (data: unknown) => { items: unknown[]; total?: number } | null;
-      writeBack?: (old: unknown, items: unknown[], total?: number) => unknown;
-      maxKeys?: number;
-      enableForOperations?: Array<"update" | "delete">;
-    };
-    /**
-     * Consistency strategy:
-     * - "sync+invalidate": Update cache locally AND invalidate queries (default).
-     * - "sync-only": Update cache locally only (use when server is eventually consistent and you trust the client).
-     * - "invalidate-only": Do not update cache locally, just invalidate.
-     * - "auto": "sync-only" for updates, "sync+invalidate" for deletes.
-     */
-    mode?: "sync+invalidate" | "invalidate-only" | "sync-only" | "auto";
-    /**
-     * Default operation type if not provided in variables.
-     * Useful for useMutation where variables might not contain operation info.
-     */
-    defaultOperation?: "create" | "update" | "delete";
-    /**
-     * Delay in milliseconds before invalidating queries.
-     * Useful for eventually consistent backends (e.g. ElasticSearch).
-     * Default: 0
-     */
-    invalidationDelay?: number;
   };
 }

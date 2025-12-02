@@ -16,9 +16,11 @@
 10. [第八步：智能预取](#10-第八步智能预取)
 11. [第九步：Suspense 模式](#11-第九步suspense-模式)
 12. [第十步：离线支持与持久化](#12-第十步离线支持与持久化)
-13. [第十一步：焦点管理](#13-第十一步焦点管理)
-14. [第十二步：工具函数与选择器](#14-第十二步工具函数与选择器)
-15. [最佳实践与常见问题](#15-最佳实践与常见问题)
+13. [第十一步：数据防护与安全](#13-第十一步数据防护与安全)
+14. [第十二步：焦点管理](#14-第十二步焦点管理)
+15. [第十三步：工具函数与选择器](#15-第十三步工具函数与选择器)
+16. [最佳实践与常见问题](#16-最佳实践与常见问题)
+17. [API 索引](#17-api-索引)
 
 ---
 
@@ -42,6 +44,46 @@
 
 接下来，让我们一步步学习如何使用这些功能。
 
+### 1.1 设计初衷与原则
+
+- 保持与 TanStack Query v5 完全兼容，不改变其核心行为，只做“安全增强”。
+- 提供开箱即用的最佳实践配置，减少重复劳动与认知负担。
+- 以“安全”为首要前提：数据防护、持久化安全、离线队列的稳健性、错误处理的可控性。
+- API 设计坚持渐进增强：原生用法不变，增强能力按需启用，便于迁移和学习。
+- TypeScript 友好：导出类型与范型参数与 TanStack 保持一致，避免类型陷阱。
+
+### 1.2 适用场景
+
+- 中大型前端应用，需要统一的查询管理与最佳实践配置。
+- 有离线需求（电商、文档编辑、移动端 Web）或需要缓存持久化与恢复的场景。
+- 需要更强的乐观更新、并发冲突处理、数据一致性保障。
+- 希望最小化自定义基础设施代码，将精力聚焦在业务逻辑。
+
+### 1.3 非目标与边界
+
+- 不替代后端的并发控制与数据一致性保障；前端 Data Guard 仅作为“最后防线”。
+- 不内置与具体后端协议的强绑定（如 GraphQL/REST 的特定实现）；保持通用。
+- 不存储任何敏感凭据；持久化仅针对查询缓存，且可配置与可关闭。
+
+### 1.4 安全与合规
+
+- 持久化默认仅保存可序列化且成功的查询数据，避免异常对象导致恢复失败（参见 `createPersistOptions`）。
+- 建议不要在 `queryKey` 中包含敏感信息（如 token、身份证号、手机号原文）。
+- DevTools 仅在开发环境启用，避免在生产泄露内部状态（参见 `isDevToolsEnabled`）。
+- 离线队列持久化时去除了函数体，仅存操作元数据；实际执行函数需通过注册表安全绑定。
+
+### 1.5 术语速览
+
+- `queryKey`：查询的唯一标识；必须是稳定、可序列化的值（通常为数组）
+- `queryFn`：实际获取数据的异步函数；返回 Promise
+- `staleTime`：数据保持“新鲜”的时间窗口；新鲜期内不会重复请求
+- `gcTime`：缓存保留时间；超过后缓存会被清理
+- `invalidate`：标记查询为过期；下一次渲染或焦点恢复时会重新请求
+- `refetch`：主动重新请求数据
+- `persist`：将查询缓存持久化到存储（localStorage/IndexedDB）并在刷新后恢复
+- `offline`：网络不可用时的状态；本库提供队列与自动恢复机制
+- `optimistic update`：先更新 UI，再与服务端同步；失败时需回滚
+- `Data Guard`：防止旧数据覆盖新数据的前端机制（版本/时间戳/哈希比对）
 ---
 
 ## 2. 安装与环境准备
@@ -69,6 +111,9 @@ npm install @tanstack/react-query-devtools
 
 # 视口预取功能（如果需要 useInViewPrefetch）
 npm install react-intersection-observer
+
+# 路由预取示例所需（如果使用 useRoutePrefetch 示例中的 Link/useNavigate）
+npm install react-router-dom
 ```
 
 ### 2.3 环境要求
@@ -80,10 +125,103 @@ npm install react-intersection-observer
 
 现在环境准备好了，让我们开始配置应用。
 
+### 2.4 学习路径与检查清单
+
+严格建议按照以下顺序学习与落地，并在每一步完成后进行自检：
+
+1. 安装依赖：确保安装本库及 peer 依赖（`@tanstack/react-query`、`react`、`react-dom`），按需安装 `devtools`、`react-intersection-observer`、`react-router-dom`
+2. 创建 `QueryClient`：使用 `GLOBAL_QUERY_CONFIG`，避免随意调整 `retry`、`staleTime` 造成请求风暴
+3. 包裹应用：使用 `PersistQueryClientProvider` 开启持久化与离线支持（生产环境建议保留持久化）
+4. 添加 DevTools（开发环境）：`isDevToolsEnabled()` 控制显示，严禁在生产强制开启
+5. 发起首个查询：优先使用 `useEnhancedQuery`，在慢查询或错误场景验证日志输出
+6. 增强 Mutation：在列表 CRUD 场景启用乐观更新，并验证回滚路径与错误处理
+7. 离线与持久化：断网测试页面行为；验证缓存恢复与离线队列的稳健性
+8. 数据防护（可选但推荐）：开启 Data Guard 的版本/时间戳/哈希策略，防止旧数据覆盖
+9. 焦点管理：按照业务需要控制窗口聚焦时的刷新频率，避免抖动
+10. 预取：根据网络情况与页面流量，按需启用悬停/视口/路由/空闲预取，避免过度预取
+
+完成以上 10 点后，再进入“最佳实践与常见问题”章节进行整体检查与性能、安全优化。
+
+### 2.5 五分钟上手示例
+
+目标：用 5 分钟完成“配置 Provider + 首个查询 + DevTools 调试”。
+
+1. 安装依赖：
+
+```bash
+npm install @qiaopeng/tanstack-query-plus @tanstack/react-query @tanstack/react-query-persist-client
+npm install @tanstack/react-query-devtools --save-dev
+```
+
+2. 创建 Provider：
+
+```tsx
+// main.tsx
+import { QueryClient, PersistQueryClientProvider } from '@qiaopeng/tanstack-query-plus'
+import { GLOBAL_QUERY_CONFIG } from '@qiaopeng/tanstack-query-plus/core'
+import { ReactQueryDevtools, isDevToolsEnabled } from '@qiaopeng/tanstack-query-plus/core/devtools'
+
+const queryClient = new QueryClient({ defaultOptions: GLOBAL_QUERY_CONFIG })
+
+function Providers({ children }) {
+  return (
+    <PersistQueryClientProvider client={queryClient}>
+      {children}
+      {isDevToolsEnabled() && <ReactQueryDevtools initialIsOpen={false} />}
+    </PersistQueryClientProvider>
+  )
+}
+```
+
+3. 发起首个查询：
+
+```tsx
+// App.tsx
+import { useEnhancedQuery } from '@qiaopeng/tanstack-query-plus/hooks'
+
+export default function App() {
+  const { data, isLoading, isError } = useEnhancedQuery({
+    queryKey: ['hello'],
+    queryFn: async () => ({ message: 'Hello Query Plus' }),
+  })
+  if (isLoading) return <div>加载中...</div>
+  if (isError) return <div>加载失败</div>
+  return <div>{data.message}</div>
+}
+```
+
+4. 跑起来：在浏览器中打开 DevTools 面板，查看 `['hello']` 查询状态。
+
+### 2.6 TypeScript 配置建议
+
+以下 `tsconfig.json` 选项可以帮助初学者避免常见类型问题：
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "useUnknownInCatchVariables": true
+  }
+}
+```
+
+说明：
+- `strict: true` 有助于暴露隐含的 `any` 与未处理的 `undefined`
+- `skipLibCheck: true` 可避免第三方库类型检查的噪音（对本库安全）
+- `useUnknownInCatchVariables` 提醒你显式处理错误类型
+
 ---
 
 ## 3. 第一步：配置 Provider
-
 
 任何使用 TanStack Query 的应用都需要一个 Provider 来提供 QueryClient 实例。本库提供了一个增强版的 Provider，让配置变得更简单。
 
@@ -819,33 +957,43 @@ mutation.mutate({ newTitle: '新标题' })
 
 ### 7.5 条件性乐观更新
 
-有时候只想在特定条件下执行乐观更新：
+本库未提供单独的 `useConditionalOptimisticMutation`。如需按条件启用乐观更新，使用以下两种安全模式：
+
+1. 使用两个 mutation，根据条件选择调用哪个（最清晰、类型安全）：
 
 ```tsx
-import { useConditionalOptimisticMutation } from '@qiaopeng/tanstack-query-plus/hooks'
+import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
 
-const mutation = useConditionalOptimisticMutation(
-  // 第一个参数：mutation 函数
-  updateTodo,
-  // 第二个参数：条件函数，只有返回 true 时才执行乐观更新
-  (variables) => variables.priority === 'high',
-  // 第三个参数：配置选项
-  {
-    mutationKey: ['updateTodo'],  // 可选的 mutation key
-    optimistic: {
-      queryKey: ['todos'],
-      updater: (oldTodos, updatedTodo) => 
-        oldTodos?.map(t => t.id === updatedTodo.id ? { ...t, ...updatedTodo } : t)
-    },
-    onSuccess: () => {
-      console.log('更新成功')
-    }
+const optimisticUpdate = useMutation({
+  mutationFn: updateTodo,
+  optimistic: {
+    queryKey: ['todos'],
+    updater: (oldTodos, updatedTodo) => oldTodos?.map(t => t.id === updatedTodo.id ? { ...t, ...updatedTodo } : t)
   }
-)
+})
 
-// 使用
-mutation.mutate({ id: '1', title: '新标题', priority: 'high' })  // 会乐观更新
-mutation.mutate({ id: '2', title: '新标题', priority: 'low' })   // 不会乐观更新
+const plainUpdate = useMutation({ mutationFn: updateTodo })
+
+function save(todo) {
+  const shouldOptimistic = todo.priority === 'high'
+  const runner = shouldOptimistic ? optimisticUpdate : plainUpdate
+  runner.mutate(todo)
+}
+```
+
+2. 基于状态切换 `optimistic.enabled`（适合全局开关）：
+
+```tsx
+// 以应用自身配置或组件状态为准（此处仅示例）
+const enableOptimistic = true
+const mutation = useMutation({
+  mutationFn: updateTodo,
+  optimistic: {
+    queryKey: ['todos'],
+    enabled: enableOptimistic,
+    updater: (oldTodos, updatedTodo) => oldTodos?.map(t => t.id === updatedTodo.id ? { ...t, ...updatedTodo } : t)
+  }
+})
 ```
 
 ### 7.6 列表操作的简化 Mutation
@@ -897,20 +1045,38 @@ function TodoList() {
 
 ### 7.7 批量 Mutation
 
-处理批量操作：
+本库未提供 `useBatchMutation`。进行批量操作时，推荐两种模式：
+
+1. 在一个 mutation 中封装批量逻辑（一次请求或并发 Promise）：
 
 ```tsx
-import { useBatchMutation } from '@qiaopeng/tanstack-query-plus/hooks'
+import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
 
-const batchMutation = useBatchMutation(
-  async (todoIds) => {
-    // 批量删除
-    return Promise.all(todoIds.map(id => api.deleteTodo(id)))
+const batchDelete = useMutation({
+  mutationFn: async (ids: string[]) => {
+    return Promise.all(ids.map(id => api.deleteTodo(id)))
+  },
+  optimistic: {
+    queryKey: ['todos'],
+    updater: (old, ids: string[]) => old?.filter(t => !ids.includes(String(t.id)))
   }
-)
+})
 
 // 使用
-batchMutation.mutate(['id1', 'id2', 'id3'])
+batchDelete.mutate(['id1', 'id2', 'id3'])
+```
+
+2. 使用离线队列在恢复网络后批量执行（稳健且可持久化）：
+
+```tsx
+import { createOfflineQueueManager, mutationRegistry } from '@qiaopeng/tanstack-query-plus/features'
+
+const queue = createOfflineQueueManager({ storageKey: 'todo-ops', concurrency: 3 })
+
+function registerDelete(id: string) {
+  mutationRegistry.register(['todos','delete',id].join('-'), () => api.deleteTodo(id))
+  queue.add({ mutationKey: ['todos','delete',id], mutationFn: () => api.deleteTodo(id), priority: 1 })
+}
 ```
 
 ### 7.8 乐观更新工具函数
@@ -968,7 +1134,7 @@ const list7 = conditionalUpdateItems(
 )
 ```
 
- ### 7.9 完整示例：Todo 应用
+### 7.9 完整示例：Todo 应用
 
 ```tsx
 import { useEnhancedQuery, useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
@@ -1042,54 +1208,12 @@ function TodoApp() {
 }
 ```
 
-### 7.10 分页家族一致性（避免分页切换回退）
+### 7.10 安全提示
 
-在带分页/筛选/排序的列表中，编辑、新增、删除、状态变更成功后切换 `page/pageSize` 时，可能命中同一资源的另一查询变体，从而短暂显示旧快照。本库提供可选的“家族一致性”能力，保障在成功后切换分页不回退。
-
-- 开启方式：在 `useMutation` 传入 `consistency` 配置
-- 默认策略：`mode: 'sync+invalidate'` 先同步更新缓存，再延迟失效，确保 UI 立即响应且最终一致
-- 安全策略：`mode: 'invalidate-only'` 仅执行失效，完全依赖服务端数据（适合非关键数据）
-- 形状适配：通过 `consistency.familySync.listSelector` 适配 `{items,total}` 结构；无法识别时自动降级为仅失效
-
-```tsx
-import { useMutation } from '@qiaopeng/tanstack-query-plus/hooks'
-import { createPaginatedKey } from '@qiaopeng/tanstack-query-plus/core'
-
-function useUpdateProduct({ page, pageSize }) {
-  return useMutation({
-    mutationFn: (updated) => api.updateProduct(updated.id, updated),
-
-    // 当前页的乐观更新：先更新 UI，再发请求，失败自动回滚
-    optimistic: {
-      queryKey: createPaginatedKey(['products', 'list'], page, pageSize),
-      updater: (old, updated) => old?.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
-    },
-
-    // 家族一致性：编辑成功后，保障跨分页/筛选/排序的变体不回退
-    consistency: {
-      mode: 'sync+invalidate', // 默认值，先同步缓存再延迟失效
-      invalidationDelay: 1000, // 延迟失效，等待后端一致性
-      familySync: {
-        idField: 'id',
-        // 适配分页对象：提取 items；不确定时返回 null 将仅失效
-        listSelector: (data) => {
-          if (data && typeof data === 'object' && 'items' in (data as any)) {
-            return { items: (data as any).items, total: (data as any).total }
-          }
-          if (Array.isArray(data)) return { items: data }
-          return null
-        },
-        maxKeys: 50,
-      }
-    },
-  })
-}
-```
-
-适用操作与行为说明：
-- 编辑/删除：在 `sync+invalidate` 模式下，会对已缓存的家族变体按 `id` 合并或移除；随后统一失效，最终以服务端为准
-- **自动竞态保护**：当检测到 `consistency` 模式开启时，会自动取消该列表家族下所有正在进行的旧请求，防止旧数据覆盖新缓存
-- 新增/状态变更：默认不做跨页注入，仅当前页处理并家族失效；需要跨页放置时请在服务端裁决归属
+- 明确回滚路径：在 `onError` 或 `rollback` 中恢复缓存或触发重新拉取
+- 稳定的 `queryKey`：使用 Key 工厂，避免结构漂移导致更新不到位
+- 变量安全：Mutation 变量不包含敏感信息（如 token），错误上报需脱敏
+- 冲突处理：对 409 触发家族失效与 UI 提示；对 500 展示兜底提示并记录错误
 
 现在你已经掌握了数据变更和乐观更新。接下来，让我们学习如何处理无限滚动和分页场景。
 
@@ -2072,6 +2196,14 @@ function ProductBrowser() {
 
 现在你已经掌握了预取策略。接下来，让我们学习 Suspense 模式，它可以让你的代码更简洁。
 
+### 10.12 安全提示
+
+- 结合网络状况：使用 `useSmartPrefetch` 在慢网络禁用预取，避免拥塞
+- 控制频率与间隔：为悬停/路由预取设置 `minInterval`，避免重复请求
+- 严格限定 Key：预取目标必须是稳定且可序列化的 `queryKey`
+- 避免敏感信息：不要将敏感数据拼入 `queryKey`
+- 可回收：在复杂页面中适时清理预取历史（`clearPrefetchHistory`）以避免状态膨胀
+
 ---
 
 ## 11. 第九步：Suspense 模式
@@ -2547,8 +2679,10 @@ async function handleUpdateUser(userData) {
   } else {
     // 在线时直接执行
     await updateUserAPI(userData)
-  }
+ }
 }
+
+### 队列管理器操作参考
 
 // 获取队列状态
 const state = queueManager.getState()
@@ -2693,14 +2827,118 @@ async function checkAndMigrate() {
 
 现在你已经掌握了离线支持。接下来，让我们学习焦点管理，它可以优化用户切换标签页时的体验。
 
+### 12.9 安全提示与 SSR 注意
+
+- 持久化范围：仅持久化成功且可序列化的查询数据（默认行为），避免异常对象恢复失败
+- 敏感信息：严禁将敏感凭据放入缓存数据或 `queryKey`
+- 离线队列：仅持久化操作元信息，不持久化函数体；真实执行需通过 `mutationRegistry` 注册，避免函数闭包泄露
+- 存储容量：`checkStorageSize` 超过 5MB 建议迁移到 IndexedDB；定期 `clearExpiredCache`
+- SSR 注意：服务端渲染环境下 `PersistQueryClientProvider` 会自动降级为普通 Provider，浏览器 API 均有守卫，不会在 Node 环境访问 `window`
+
 ---
 
-## 13. 第十一步：焦点管理
+## 13. 第十一步：数据防护与安全
+
+在多人协作或高并发的应用中，数据一致性是一个常见挑战。例如：
+- **旧数据覆盖新数据**：用户 A 打开页面，用户 B 更新了数据，用户 A 保存时可能会覆盖 B 的更改。
+- **乐观更新冲突**：前端乐观更新了数据，但后端因为版本冲突拒绝了请求。
+- **竞态条件**：网络请求乱序返回，导致旧数据覆盖了新数据。
+
+本库提供了 **Data Guard** 机制来解决这些问题。
+
+### 13.1 查询数据防护
+
+使用 `useDataGuardQueryConfig` 可以自动检测并拒绝过期的服务端数据：
+
+```tsx
+import { useEnhancedQuery, useDataGuardQueryConfig } from '@qiaopeng/tanstack-query-plus/hooks'
+
+function ProductList() {
+  // 自动包装查询配置
+  const config = useDataGuardQueryConfig(
+    ['products'],
+    fetchProducts,
+    {
+      // 策略配置
+      maxDataAge: 5000, // 允许的最大数据时差
+      onStaleDataDetected: ({ reason, cached, rejected }) => {
+        console.warn(`拒绝了旧数据: ${reason}`)
+        // cached: 当前缓存的较新数据
+        // rejected: 被拒绝的服务端旧数据
+      }
+    }
+  )
+
+  const { data } = useEnhancedQuery(config)
+  
+  return <div>...</div>
+}
+```
+
+**防护策略优先级**：
+1. **版本号 (Version)**: 如果数据包含 `version` 字段，严格比较版本号。
+2. **时间戳 (Timestamp)**: 如果数据包含 `updatedAt` 字段，比较更新时间。
+3. **哈希 (Hash)**: 如果都没有，计算内容哈希，拒绝相同内容的重复更新。
+
+### 13.2 变更数据防护
+
+使用 `useDataGuardMutation` 处理并发更新冲突：
+
+```tsx
+import { useDataGuardMutation } from '@qiaopeng/tanstack-query-plus/hooks'
+
+function EditProduct({ product }) {
+  const mutation = useDataGuardMutation(
+    (updates) => api.updateProduct(updates),
+    ['products'], // 相关的查询 key
+    {
+      // 发生冲突时的回调 (HTTP 409)
+      onConflict: (error) => {
+        toast.error('检测到数据冲突，页面将自动刷新')
+      },
+      // 内置乐观更新支持
+      optimistic: {
+        queryKey: ['products'],
+        updater: (old, newProduct) => {
+           // Data Guard 会自动处理版本号递增和时间戳更新
+           return { ...old, ...newProduct }
+        }
+      }
+    }
+  )
+
+  const handleSave = (updates) => {
+    // 提交时带上当前版本号
+    mutation.mutate({ 
+      ...updates, 
+      version: product.version 
+    })
+  }
+}
+```
+
+ **`useDataGuardMutation` 的特性**：
+- **自动冲突检测**：捕获 409 Conflict 错误并触发回调。
+- **智能乐观更新**：自动递增本地数据的版本号，防止 UI 闪烁。
+- **家族元数据同步**：更新成功后，自动同步相关查询元数据。
+ - **自动失效**：发生冲突时，自动失效相关缓存以获取最新数据。
+
+### 13.3 安全提示
+
+- 统一数据版本：后端需提供 `version` 或 `updatedAt` 字段，前端 Data Guard 才能更有效地比对
+- 明确冲突策略：将 409 视为冲突并提示用户刷新，避免静默覆盖
+- 审计与日志：为冲突与拒绝旧数据的情况打点，便于后续排查
+- 仅在必要处开启 Data Guard：对只读数据可关闭防护以减少开销
+- 家族同步慎用：确保变体的 `queryKey` 有共同前缀，避免误伤无关查询
+
+---
+
+## 14. 第十二步：焦点管理
 
 
 当用户切换浏览器标签页或窗口时，TanStack Query 默认会在窗口重新获得焦点时刷新数据。本库提供了更精细的焦点管理功能。
 
-### 13.1 获取焦点状态
+### 14.1 获取焦点状态
 
 ```tsx
 import { useFocusState, usePageVisibility } from '@qiaopeng/tanstack-query-plus/hooks'
@@ -2718,7 +2956,7 @@ function FocusIndicator() {
 }
 ```
 
-### 13.2 焦点恢复时刷新指定查询
+### 14.2 焦点恢复时刷新指定查询
 
 默认情况下，所有查询都会在窗口聚焦时刷新。但有时你只想刷新特定的查询：
 
@@ -2740,7 +2978,7 @@ function Dashboard() {
 }
 ```
 
-### 13.3 焦点恢复时执行回调
+### 14.3 焦点恢复时执行回调
 
 ```tsx
 import { useFocusCallback } from '@qiaopeng/tanstack-query-plus/hooks'
@@ -2761,7 +2999,7 @@ function AnalyticsTracker() {
 }
 ```
 
-### 13.4 条件性焦点刷新
+### 14.4 条件性焦点刷新
 
 只在满足条件时刷新：
 
@@ -2780,7 +3018,7 @@ function ChatRoom({ roomId, isActive }) {
 }
 ```
 
-### 13.5 暂停焦点管理
+### 14.5 暂停焦点管理
 
 在某些场景下（如模态框打开时），你可能想暂停焦点刷新：
 
@@ -2818,7 +3056,7 @@ function VideoPlayer() {
 }
 ```
 
-### 13.6 智能焦点管理器
+### 14.6 智能焦点管理器
 
 获取焦点管理的统计信息：
 
@@ -2845,7 +3083,7 @@ function FocusDebugPanel() {
 }
 ```
 
-### 13.7 焦点管理最佳实践
+### 14.7 焦点管理最佳实践
 
 1. **设置 minInterval**：避免用户频繁切换标签页时过度刷新
 2. **选择性刷新**：不是所有数据都需要在焦点恢复时刷新
@@ -2856,12 +3094,12 @@ function FocusDebugPanel() {
 
 ---
 
-## 14. 第十二步：工具函数与选择器
+## 15. 第十三步：工具函数与选择器
 
 
 本库提供了丰富的工具函数，帮助你更高效地处理数据。
 
-### 14.1 选择器（Selectors）
+### 15.1 选择器（Selectors）
 
 选择器用于 `select` 选项，可以在数据返回后进行转换。注意：大部分选择器是高阶函数，需要先调用生成实际的选择器函数。
 
@@ -2924,7 +3162,7 @@ const { data: userBasicInfo } = useQuery({
 })
 ```
 
-### 14.2 组合选择器
+### 15.2 组合选择器
 
 选择器可以组合使用：
 
@@ -2952,7 +3190,7 @@ const { data: adminEmails } = useQuery({
 })
 ```
 
-### 14.3 独立使用选择器函数
+### 15.3 独立使用选择器函数
 
 选择器也可以独立使用。注意：这些函数大多是高阶函数，需要先传入参数生成选择器，再传入数据：
 
@@ -2998,7 +3236,7 @@ const activeNamesSelector = compose(
 const activeNames = activeNamesSelector(users)  // ['Alice', 'Charlie']
 ```
 
-### 14.4 列表更新工具
+### 15.4 列表更新工具
 
 用于乐观更新的列表操作：
 
@@ -3038,7 +3276,7 @@ const batchRemoved = batchRemoveItems(todos, ['1', '3'])
 const reordered = reorderItems(todos, 0, 2)
 ```
 
-### 14.5 创建乐观更新配置
+### 15.5 创建乐观更新配置
 
 快速创建常用的乐观更新配置：
 
@@ -3068,7 +3306,7 @@ const addMutation = useMutation({
 })
 ```
 
-### 14.6 Query Key 工具
+### 15.6 Query Key 工具
 
 ```tsx
 import { 
@@ -3120,7 +3358,7 @@ const normalized = normalizeQueryParams(
 )  // { page: 1, sort: 'name' }
 ```
 
-### 14.7 网络工具
+### 15.7 网络工具
 
 ```tsx
 import { 
@@ -3154,7 +3392,7 @@ const info = getNetworkInfo()
 // }
 ```
 
-### 14.8 存储工具
+### 15.8 存储工具
 
 ```tsx
 import { 
@@ -3188,7 +3426,7 @@ cloned.nested.value = 2
 console.log(original.nested.value)  // 1（原始数据不变）
 ```
 
-### 14.9 字段映射工具
+### 15.9 字段映射工具
 
 ```tsx
 import { 
@@ -3225,7 +3463,7 @@ const newTodo = {
 
 **注意**：`createFieldEnricher` 是一个高级函数，用于根据配置数据丰富查询结果中的字段（如将 ID 映射为名称），需要配合 QueryClient 使用，适用于特定的业务场景。
 
-### 14.10 保持上一次数据
+### 15.10 保持上一次数据
 
 在数据刷新时保持显示上一次的数据：
 
@@ -3249,7 +3487,7 @@ function SearchResults({ query }) {
 }
 ```
 
-### 14.11 家族一致性工具
+### 15.11 家族一致性工具
 
 在某些高级场景下，你可能需要自行枚举并同步同一资源的家族查询变体（分页/筛选/排序等）。本库提供了工具函数用于匹配与安全同步：
 
@@ -3283,7 +3521,7 @@ function useManualFamilySync() {
 
 ---
 
-## 15. 最佳实践与常见问题
+## 16. 最佳实践与常见问题
 
 ### 导入路径速查表
 
@@ -3313,7 +3551,7 @@ function useManualFamilySync() {
 - 如果需要 TanStack Query 的原生 `useQuery`（而非增强版），从 `@tanstack/react-query` 导入
 - 子路径导入可以实现更好的 tree-shaking
 
-### 15.1 项目结构建议
+### 16.1 项目结构建议
 
 ```
 src/
@@ -3335,7 +3573,7 @@ src/
 └── App.tsx
 ```
 
-### 15.2 封装自定义 Hooks
+### 16.2 封装自定义 Hooks
 
 将查询逻辑封装成自定义 hooks：
 
@@ -3370,7 +3608,7 @@ function UserProfile({ userId }) {
 }
 ```
 
-### 15.3 配置最佳实践
+### 16.3 配置最佳实践
 
 ```tsx
 // config/queryClient.ts
@@ -3394,7 +3632,7 @@ export const queryClient = new QueryClient({
 })
 ```
 
-### 15.4 错误处理最佳实践
+### 16.4 错误处理最佳实践
 
 ```tsx
 // 全局错误处理
@@ -3423,7 +3661,7 @@ const queryClient = new QueryClient({
 })
 ```
 
-### 15.5 TypeScript 类型最佳实践
+### 16.5 TypeScript 类型最佳实践
 
 ```tsx
 import type { 
@@ -3464,7 +3702,7 @@ function useUpdateUser() {
 }
 ```
 
-### 15.6 常见问题解答
+### 16.6 常见问题解答
 
 #### Q: DevTools 报错 "Module not found"
 
@@ -3572,7 +3810,7 @@ useEnhancedQuery({
 ```
 3. 检查 queryKey 是否正确（使用 key 工厂避免拼写错误）
 
-### 15.7 性能优化建议
+### 16.7 性能优化建议
 
 1. **合理设置 staleTime**：避免不必要的重复请求
 2. **使用 select**：只选择需要的数据，减少重渲染
@@ -3581,9 +3819,9 @@ useEnhancedQuery({
 5. **懒加载**：结合 Suspense 和代码分割
 6. **避免过度乐观更新**：只在必要时使用
 
-### 15.8 安全建议
+### 16.8 安全建议
 
-1. **不要在 queryKey 中包含敏感信息**：queryKey 可能被记录或暴露
+ 1. **不要在 queryKey 中包含敏感信息**：queryKey 可能被记录或暴露
 2. **验证服务端响应**：不要盲目信任 API 返回的数据
 3. **处理认证过期**：在全局错误处理中处理 401 错误
 4. **清理敏感缓存**：用户登出时清除缓存
@@ -3603,8 +3841,9 @@ useEnhancedQuery({
 7. ✅ 智能预取策略
 8. ✅ Suspense 模式
 9. ✅ 离线支持和持久化
-10. ✅ 焦点管理
-11. ✅ 工具函数和选择器
+10. ✅ 数据防护与安全
+11. ✅ 焦点管理
+12. ✅ 工具函数和选择器
 
 ### 下一步
 
@@ -3613,3 +3852,90 @@ useEnhancedQuery({
 - 在 [Issues](https://github.com/qiaopengg/qiaopeng-tanstack-query-plus/issues) 中提问或反馈
 
 祝你编码愉快！🚀
+### 16.9 类型与错误处理规范
+
+- 明确类型参数：在增强 hooks 中显式标注 `TData` 与 `TError`，避免 `any` 漏出
+- 统一错误模型：为后端错误定义统一类型（如 `ApiError`），在 UI 层集中处理
+- 不吞错误：日志与监控采集应在开发开启，生产使用采样与脱敏
+- 优先 `isError` 分支渲染兜底组件，避免在 `data` 为 `undefined` 时解构引发异常
+- 乐观更新的回滚必须可重入：错误重试不应导致状态错乱
+
+### 16.10 SSR 注意事项
+
+- Provider 降级：SSR 环境自动使用普通 `QueryClientProvider`，浏览器 API 有环境守卫
+- 数据注入：如需 SSR 注水，建议结合 TanStack 原生脱水/注水（本库不强绑）
+- 路由预取：服务端不执行预取相关浏览器 API，需在客户端挂载后进行
+
+### 16.11 Tree-shaking 与导入路径
+
+- 使用子路径导入（如 `@qiaopeng/tanstack-query-plus/hooks`、`/core`、`/utils`），提升摇树效果
+- 保持副作用为零：本包 `sideEffects: false`，按需导入可以减少体积
+- 避免从根入口导入全部模块：仅在需要时按子路径引入具体能力
+
+### 16.12 起步排障清单
+
+- DevTools 未显示：安装并从 `@qiaopeng/tanstack-query-plus/core/devtools` 导入，仅在开发环境显示（`core/devtools.ts:28`）
+- 视口预取报错：安装 `react-intersection-observer` 并从 `hooks/inview` 子路径导入（`src/hooks/useInViewPrefetch.ts`）
+- 路由预取报错：安装 `react-router-dom`，示例仅依赖其 Link/useNavigate
+- 缓存未恢复：检查 `enablePersistence` 与 `cacheKey`；确认浏览器支持 localStorage（`features/persistence.ts:43`）
+- 离线队列不执行：确保在恢复网络后调用 `createOfflineQueueManager`，并通过 `mutationRegistry` 注册函数（`features/offline.ts:30`）
+- 乐观更新错乱：确保 `queryKey` 稳定、列表更新器使用 `id` 对齐（`utils/optimisticUtils.ts:14`）
+- 冲突未处理：确认后端返回 409 或约定错误码，前端使用 `useDataGuardMutation` 捕获（`hooks/useDataGuardMutation.ts:80`）
+- SSR 环境错误：确保 Provider 自动降级，不在服务端访问 `window`（`PersistQueryClientProvider.tsx:34`）
+
+### 16.13 生产前检查清单
+
+- DevTools：生产环境关闭（`isDevToolsEnabled()` 为 false）
+- 错误处理：所有查询与变更都有兜底 UI 与日志记录
+- 缓存策略：为高频接口设置合理 `staleTime`，避免重复请求
+- 乐观更新：具备回滚与重试策略；冲突触发家族失效
+- 持久化：确认缓存大小与迁移策略（localStorage → IndexedDB）
+- 安全审查：queryKey 与缓存不包含敏感信息；队列不持久化函数体
+- 监控：慢查询上报、错误采样与脱敏处理
+
+## 17. API 索引
+
+为方便查找，这里列出各子路径的主要导出与用途：
+
+- `@qiaopeng/tanstack-query-plus`（顶层）
+  - `PersistQueryClientProvider`、`usePersistenceStatus`、`usePersistenceManager`
+  - `QueryClient`、`QueryClientProvider`、`useQueryClient`、`skipToken`、`useIsMutating`（直接再导出原生 API）
+
+- `@qiaopeng/tanstack-query-plus/core`
+  - 配置：`GLOBAL_QUERY_CONFIG`、`createCustomConfig`、`DEFAULT_STALE_TIME`、`DEFAULT_GC_TIME`
+  - 重试：`defaultQueryRetryStrategy`、`defaultMutationRetryStrategy`、`exponentialBackoff`
+  - 环境：`isDev`、`isProd`、`isTest`
+  - DevTools：`ReactQueryDevtools`、`isDevToolsEnabled`、`createDevToolsConfig`（src/core/devtools.ts:28）
+  - 焦点管理：`focusManager`、`getSmartFocusManager`、`pauseFocusManager`、`resumeFocusManager`
+  - Key 工具：`queryKeys`、`normalizeQueryKey`、`createDomainKeyFactory`、`createMutationKeyFactory`
+  - Query 配置：`createAppQueryOptions`、`createListQueryOptions`
+
+- `@qiaopeng/tanstack-query-plus/hooks`
+  - 查询：`useEnhancedQuery`、`useEnhancedSuspenseQuery`、`useEnhancedInfiniteQuery`
+  - 批量查询：`useEnhancedQueries`、`useAutoRefreshBatchQueries`、`useDashboardQueries`
+  - Mutation：`useMutation`、`useListMutation`、`setupMutationDefaults`
+  - 预取：`useHoverPrefetch`、`useInViewPrefetch`（子路径 `hooks/inview`）、`useRoutePrefetch`、`useSmartPrefetch`、`useConditionalPrefetch`、`useIdlePrefetch`、`usePeriodicPrefetch`、`usePredictivePrefetch`、`usePriorityPrefetch`
+  - 焦点：`useFocusState`、`useFocusRefetch`、`useConditionalFocusRefetch`、`usePauseFocus`、`useSmartFocusManager`
+  - 数据防护：`useDataGuardQueryConfig`、`useDataGuardMutation`
+
+- `@qiaopeng/tanstack-query-plus/features`
+  - 离线：`setupOnlineManager`、`isOnline`、`createOfflineQueueManager`、`OfflineQueueManager`、`mutationRegistry`、`subscribeToOnlineStatus`
+  - 持久化：`createPersistOptions`、`createPersister`、`clearCache`、`clearExpiredCache`、`checkStorageSize`、`getStorageStats`、`migrateToIndexedDB`
+
+- `@qiaopeng/tanstack-query-plus/components`
+  - Loading：`DefaultLoadingFallback`、`FullScreenLoading`、`ListSkeletonFallback`、`PageSkeletonFallback`、`SmallLoadingIndicator`、`TextSkeletonFallback`
+  - 错误边界：`QueryErrorBoundary`
+  - Suspense：`SuspenseWrapper`、`QuerySuspenseWrapper`
+
+- `@qiaopeng/tanstack-query-plus/utils`
+  - 选择器：`selectById`、`selectFields`、`compose` 等
+  - 列表/乐观工具：`listUpdater`、`createAddItemConfig`、`createUpdateItemConfig`、`reorderItems`
+  - 预取管理器：`getPrefetchManager`、`SmartPrefetchManager`、`resetPrefetchManager`
+  - Query Key 工厂：`createQueryKeyFactory`、`normalizeQueryParams`
+  - 存储与网络：`isStorageAvailable`、`getNetworkSpeed`、`isSlowNetwork`
+  - 数据防护：`applyDataGuard`、`updateFamilyMetadata`
+
+- `@qiaopeng/tanstack-query-plus/react-query`
+  - 原生 API 再导出：`useQuery`、`useMutation`、`useInfiniteQuery`、`useSuspenseQuery` 等（src/react-query/index.ts:1）
+
+提示：完整导出列表可在 `package.json:33` 的 `exports` 字段中查看；顶层入口再导出常用原生 API，子路径按模块分层导出，便于 tree-shaking。

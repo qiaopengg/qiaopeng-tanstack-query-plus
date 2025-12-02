@@ -5,7 +5,23 @@ import type {
   VersionedEntity,
   VersionedPaginatedResponse
 } from "../types/dataGuard.js";
-import { startsWithKeyPrefix } from "./consistency.js";
+
+/**
+ * Check if a query key starts with a given prefix
+ */
+function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
+  const k = Array.isArray(key) ? key : [key];
+  const p = Array.isArray(prefix) ? prefix : [prefix];
+  
+  if (p.length > k.length) return false;
+  
+  for (let i = 0; i < p.length; i++) {
+    if (JSON.stringify(k[i]) !== JSON.stringify(p[i])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * 简单的字符串哈希函数（DJB2算法变体）

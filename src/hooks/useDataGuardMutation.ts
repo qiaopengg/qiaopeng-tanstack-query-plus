@@ -5,7 +5,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMutation } from "./useMutation.js";
 import { ConflictError } from "../types/dataGuard.js";
 import { hashObject, markRecentlyUpdated, clearRecentlyUpdated, updateFamilyMetadata } from "../utils/dataGuard.js";
-import { startsWithKeyPrefix } from "../utils/consistency.js";
+
+/**
+ * Check if a query key starts with a given prefix
+ */
+function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
+  const k = Array.isArray(key) ? key : [key];
+  const p = Array.isArray(prefix) ? prefix : [prefix];
+  
+  if (p.length > k.length) return false;
+  
+  for (let i = 0; i < p.length; i++) {
+    if (JSON.stringify(k[i]) !== JSON.stringify(p[i])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export interface DataGuardMutationOptions<TData, TError, TVariables, TContext> extends MutationOptions<TData, TError, TVariables, TContext> {
   /** 冲突错误回调 */
@@ -34,10 +50,6 @@ export interface DataGuardMutationOptions<TData, TError, TVariables, TContext> e
  *         ...old,
  *         items: old?.items?.map(p => p.id === updated.id ? updated : p)
  *       })
- *     },
- *     consistency: {
- *       mode: 'sync+invalidate',
- *       invalidationDelay: 3000
  *     },
  *     onConflict: (error) => {
  *       toast.error('数据冲突，请刷新')
@@ -118,9 +130,8 @@ export function useDataGuardMutation<
       const familyKey = Array.isArray(queryKey) ? queryKey.slice(0, -1) : [queryKey];
       updateFamilyMetadata<TData>(queryClient, familyKey, data);
 
-      // 计算清理延迟时间（基于 invalidationDelay + 缓冲时间）
-      const invalidationDelay = options?.consistency?.invalidationDelay || 3000;
-      const cleanupDelay = invalidationDelay + 2000;  // 在失效后2秒清理
+      // 延迟清理最近更新标记（5秒后）
+      const cleanupDelay = 5000;
 
       // 延迟清理最近更新标记
       setTimeout(() => {
