@@ -14,6 +14,8 @@ export {
   LONG_CACHE_CONFIG,
   PRODUCTION_CONFIG,
   REALTIME_CONFIG,
+  createErrorSafeConfig,
+  createSafeRetryStrategy,
   SMART_RETRY_MUTATION_CONFIG,
   TIME_CONSTANTS,
   validateConfig,

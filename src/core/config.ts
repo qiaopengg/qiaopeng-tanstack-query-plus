@@ -22,9 +22,8 @@ interface HttpError {
 
 export function defaultQueryRetryStrategy(failureCount: number, error: unknown): boolean {
   const httpError = error as HttpError;
-  if (httpError?.status && httpError.status >= 400 && httpError.status < 500) return false;
-  if (httpError?.status && httpError.status >= 500) return failureCount < 3;
-  return failureCount < 3;
+  if (httpError?.status && httpError.status >= 400 && httpError.status < 600) return failureCount < 2;
+  return failureCount < 2;
 }
 
 export function defaultMutationRetryStrategy(failureCount: number, error: unknown): boolean {
@@ -70,7 +69,7 @@ export const DEVELOPMENT_CONFIG: DefaultOptions = {
     ...DEFAULT_QUERY_CONFIG,
     staleTime: 0,
     gcTime: TIME_CONSTANTS.TEN_MINUTES,
-    retry: 1,
+    retry: defaultQueryRetryStrategy,
     refetchOnWindowFocus: true
   },
   mutations: {
@@ -84,7 +83,7 @@ export const PRODUCTION_CONFIG: DefaultOptions = {
     ...DEFAULT_QUERY_CONFIG,
     staleTime: TIME_CONSTANTS.TEN_MINUTES,
     gcTime: TIME_CONSTANTS.THIRTY_MINUTES,
-    retry: 3,
+    retry: defaultQueryRetryStrategy,
     refetchOnWindowFocus: true
   },
   mutations: {
@@ -98,7 +97,7 @@ export const LONG_CACHE_CONFIG: DefaultOptions = {
     ...DEFAULT_QUERY_CONFIG,
     staleTime: TIME_CONSTANTS.FIFTEEN_MINUTES,
     gcTime: TIME_CONSTANTS.ONE_HOUR,
-    retry: 2,
+    retry: defaultQueryRetryStrategy,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true
   },
@@ -113,7 +112,7 @@ export const REALTIME_CONFIG: DefaultOptions = {
     ...DEFAULT_QUERY_CONFIG,
     staleTime: 0,
     gcTime: TIME_CONSTANTS.ONE_MINUTE * 2,
-    retry: 5,
+    retry: defaultQueryRetryStrategy,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     refetchInterval: TIME_CONSTANTS.THIRTY_SECONDS
@@ -232,5 +231,52 @@ export function ensureBestPractices(config: DefaultOptions): DefaultOptions {
     }
     result.queries = queries as any;
   }
+  return result;
+}
+
+export function createSafeRetryStrategy(maxRetries500: number = 1, maxRetriesOther: number = 2) {
+  return (failureCount: number, error: unknown): boolean => {
+    const httpError = error as { status?: number };
+    if (httpError?.status && httpError.status >= 400 && httpError.status < 500) return false;
+    if (httpError?.status && httpError.status >= 500) return failureCount < maxRetries500;
+    return failureCount < maxRetriesOther;
+  };
+}
+
+export function createErrorSafeConfig(options: {
+  maxRetries500?: number;
+  maxRetriesOther?: number;
+  disableFocus?: boolean;
+  disableReconnect?: boolean;
+  conditionalRefetchInterval?: number | ((data: unknown, query: any) => number | false);
+  overrides?: Partial<DefaultOptions>;
+} = {}): DefaultOptions {
+  const {
+    maxRetries500 = 1,
+    maxRetriesOther = 2,
+    disableFocus = false,
+    disableReconnect = false,
+    conditionalRefetchInterval,
+    overrides
+  } = options;
+  const queries: DefaultOptions["queries"] = {
+    ...DEFAULT_QUERY_CONFIG,
+    retry: createSafeRetryStrategy(maxRetries500, maxRetriesOther),
+    retryDelay: exponentialBackoff,
+    refetchOnWindowFocus: disableFocus ? false : true,
+    refetchOnReconnect: disableReconnect ? false : true
+  };
+  if (conditionalRefetchInterval !== undefined) {
+    if (typeof conditionalRefetchInterval === "number") {
+      (queries as any).refetchInterval = (_data: unknown, query: any) => (query?.state?.error ? false : conditionalRefetchInterval);
+    } else {
+      (queries as any).refetchInterval = conditionalRefetchInterval;
+    }
+  }
+  const mutations: DefaultOptions["mutations"] = { ...DEFAULT_MUTATION_CONFIG };
+  const result: DefaultOptions = {
+    queries: { ...(queries as any), ...(overrides?.queries as any || {}) },
+    mutations: { ...(mutations as any), ...(overrides?.mutations as any || {}) }
+  };
   return result;
 }
