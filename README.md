@@ -291,17 +291,29 @@ function App() {
   queries: {
     staleTime: 30000,
     gcTime: 600000,
-    retry: defaultQueryRetryStrategy,
+    retry: defaultQueryRetryStrategy,  // 智能重试：4XX不重试，5XX最多1次
     retryDelay: exponentialBackoff,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   },
   mutations: {
-    retry: 0,
+    retry: 0,  // Mutation 默认不重试
     gcTime: 600000,
   }
 }
 ```
+
+**重试策略说明：**
+
+- **Query 重试**（`defaultQueryRetryStrategy`）：
+  - 4XX 客户端错误：不重试（客户端问题，重试无意义）
+  - 5XX 服务端错误：最多重试 1 次（避免过度重试）
+  - 网络错误：最多重试 2 次
+  
+- **Mutation 重试**（`defaultMutationRetryStrategy`）：
+  - 4XX 客户端错误：不重试
+  - 5XX 服务端错误：不重试（避免重复操作）
+  - 网络错误：最多重试 1 次
 
 这些值是经过实践验证的最佳实践，适合大多数应用场景。
 
@@ -322,10 +334,58 @@ const queryClient = new QueryClient({ defaultOptions: config })
 | 配置项 | development | production | test |
 |--------|-------------|------------|------|
 | staleTime | 0 | 10 分钟 | 0 |
-| retry | 1 | 3 | 0 |
+| retry (Query) | 智能重试* | 智能重试* | 0 |
+| retry (Mutation) | 0 | 0 | 0 |
 | refetchOnWindowFocus | true | true | false |
 
-### 3.5 添加 DevTools（开发环境）
+*智能重试：4XX 不重试，5XX 最多 1 次，网络错误最多 2 次
+
+### 3.5 自定义重试策略
+
+如果默认的重试策略不满足你的需求，可以使用 `createSafeRetryStrategy` 和 `createErrorSafeConfig` 来自定义：
+
+```tsx
+import { 
+  createSafeRetryStrategy, 
+  createErrorSafeConfig 
+} from '@qiaopeng/tanstack-query-plus/core'
+
+// 方式一：创建自定义重试策略
+const customRetry = createSafeRetryStrategy(
+  0,  // 4XX 错误重试次数
+  1,  // 5XX 错误重试次数
+  2   // 其他错误重试次数
+)
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: customRetry,
+    }
+  }
+})
+
+// 方式二：使用错误安全配置（推荐）
+const errorSafeConfig = createErrorSafeConfig({
+  maxRetries4xx: 0,       // 4XX 不重试
+  maxRetries5xx: 0,       // 5XX 不重试（严格模式）
+  maxRetriesOther: 1,     // 网络错误最多 1 次
+  disableFocus: false,    // 是否禁用窗口聚焦时 refetch
+  disableReconnect: false // 是否禁用重连时 refetch
+})
+
+const queryClient = new QueryClient({
+  defaultOptions: errorSafeConfig
+})
+```
+
+**使用场景：**
+
+1. **严格模式**：完全禁用 4XX/5XX 重试，避免不必要的请求
+2. **宽松模式**：增加重试次数，适合网络不稳定的环境
+3. **自定义场景**：根据业务需求精确控制重试行为
+
+### 3.6 添加 DevTools（开发环境）
 
 在开发环境中，强烈建议添加 DevTools 来调试查询状态：
 
@@ -3902,8 +3962,8 @@ useEnhancedQuery({
   - `QueryClient`、`QueryClientProvider`、`useQueryClient`、`skipToken`、`useIsMutating`（直接再导出原生 API）
 
 - `@qiaopeng/tanstack-query-plus/core`
-  - 配置：`GLOBAL_QUERY_CONFIG`、`createCustomConfig`、`DEFAULT_STALE_TIME`、`DEFAULT_GC_TIME`
-  - 重试：`defaultQueryRetryStrategy`、`defaultMutationRetryStrategy`、`exponentialBackoff`
+  - 配置：`GLOBAL_QUERY_CONFIG`、`createCustomConfig`、`createErrorSafeConfig`、`DEFAULT_STALE_TIME`、`DEFAULT_GC_TIME`
+  - 重试：`defaultQueryRetryStrategy`、`defaultMutationRetryStrategy`、`createSafeRetryStrategy`、`exponentialBackoff`
   - 环境：`isDev`、`isProd`、`isTest`
   - DevTools：`ReactQueryDevtools`、`isDevToolsEnabled`、`createDevToolsConfig`（src/core/devtools.ts:28）
   - 焦点管理：`focusManager`、`getSmartFocusManager`、`pauseFocusManager`、`resumeFocusManager`

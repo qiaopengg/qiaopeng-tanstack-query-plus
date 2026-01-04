@@ -17,20 +17,80 @@ export const DEFAULT_GC_TIME = TIME_CONSTANTS.TEN_MINUTES;
 
 interface HttpError {
   status?: number;
+  statusCode?: number;
   message?: string;
+  response?: {
+    status?: number;
+    statusCode?: number;
+  };
 }
 
+/**
+ * 从错误对象中提取 HTTP 状态码
+ * 兼容多种错误对象结构：axios、fetch、自定义等
+ */
+function extractHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  
+  const err = error as HttpError;
+  
+  // 直接在错误对象上的 status
+  if (typeof err.status === "number") return err.status;
+  if (typeof err.statusCode === "number") return err.statusCode;
+  
+  // 在 response 对象中的 status (axios 等)
+  if (err.response) {
+    if (typeof err.response.status === "number") return err.response.status;
+    if (typeof err.response.statusCode === "number") return err.response.statusCode;
+  }
+  
+  return undefined;
+}
+
+/**
+ * 默认 Query 重试策略
+ * - 4XX 客户端错误：不重试（客户端问题，重试无意义）
+ * - 5XX 服务端错误：最多重试 1 次（避免过度重试）
+ * - 其他错误（网络等）：最多重试 2 次
+ */
 export function defaultQueryRetryStrategy(failureCount: number, error: unknown): boolean {
-  const httpError = error as HttpError;
-  if (httpError?.status && httpError.status >= 400 && httpError.status < 600) return failureCount < 2;
+  const status = extractHttpStatus(error);
+  
+  // 4XX 客户端错误：不重试
+  if (status && status >= 400 && status < 500) {
+    return false;
+  }
+  
+  // 5XX 服务端错误：最多重试 1 次
+  if (status && status >= 500 && status < 600) {
+    return failureCount < 1;
+  }
+  
+  // 其他错误（网络错误等）：最多重试 2 次
   return failureCount < 2;
 }
 
+/**
+ * 默认 Mutation 重试策略
+ * - 4XX 客户端错误：不重试
+ * - 5XX 服务端错误：不重试（Mutation 更谨慎，避免重复操作）
+ * - 其他错误：最多重试 1 次
+ */
 export function defaultMutationRetryStrategy(failureCount: number, error: unknown): boolean {
-  const httpError = error as HttpError;
-  if (httpError?.status && httpError.status >= 400 && httpError.status < 500) return false;
-  if (httpError?.status && httpError.status >= 500) return failureCount < 2;
-  return failureCount < 2;
+  const status = extractHttpStatus(error);
+  
+  // 4XX 客户端错误：不重试
+  if (status && status >= 400 && status < 500) {
+    return false;
+  }
+  
+  // 5XX 服务端错误：不重试（Mutation 避免重复操作）
+  if (status && status >= 500 && status < 600) {
+    return false;
+  }
+  
+  // 其他错误（网络错误等）：最多重试 1 次
+  return failureCount < 1;
 }
 
 export function exponentialBackoff(attemptIndex: number): number {
@@ -234,17 +294,54 @@ export function ensureBestPractices(config: DefaultOptions): DefaultOptions {
   return result;
 }
 
-export function createSafeRetryStrategy(maxRetries500: number = 1, maxRetriesOther: number = 2) {
+/**
+ * 创建安全的重试策略
+ * @param maxRetries4xx - 4XX 错误最大重试次数（默认 0，不重试）
+ * @param maxRetries5xx - 5XX 错误最大重试次数（默认 0，不重试）
+ * @param maxRetriesOther - 其他错误最大重试次数（默认 1）
+ */
+export function createSafeRetryStrategy(
+  maxRetries4xx: number = 0,
+  maxRetries5xx: number = 0,
+  maxRetriesOther: number = 1
+) {
   return (failureCount: number, error: unknown): boolean => {
-    const httpError = error as { status?: number };
-    if (httpError?.status && httpError.status >= 400 && httpError.status < 500) return false;
-    if (httpError?.status && httpError.status >= 500) return failureCount < maxRetries500;
+    const status = extractHttpStatus(error);
+    
+    // 4XX 客户端错误
+    if (status && status >= 400 && status < 500) {
+      return failureCount < maxRetries4xx;
+    }
+    
+    // 5XX 服务端错误
+    if (status && status >= 500 && status < 600) {
+      return failureCount < maxRetries5xx;
+    }
+    
+    // 其他错误（网络等）
     return failureCount < maxRetriesOther;
   };
 }
 
+/**
+ * 创建错误安全配置
+ * 适用于需要严格控制重试和 refetch 行为的场景
+ * 
+ * @example
+ * ```typescript
+ * // 完全禁用重试
+ * const config = createErrorSafeConfig({
+ *   maxRetries4xx: 0,
+ *   maxRetries5xx: 0,
+ *   maxRetriesOther: 0,
+ *   disableFocus: true,
+ *   disableReconnect: true
+ * });
+ * ```
+ */
 export function createErrorSafeConfig(options: {
-  maxRetries500?: number;
+  maxRetries4xx?: number;
+  maxRetries5xx?: number;
   maxRetriesOther?: number;
   disableFocus?: boolean;
   disableReconnect?: boolean;
@@ -252,20 +349,23 @@ export function createErrorSafeConfig(options: {
   overrides?: Partial<DefaultOptions>;
 } = {}): DefaultOptions {
   const {
-    maxRetries500 = 1,
-    maxRetriesOther = 2,
+    maxRetries4xx = 0,
+    maxRetries5xx = 0,
+    maxRetriesOther = 1,
     disableFocus = false,
     disableReconnect = false,
     conditionalRefetchInterval,
     overrides
   } = options;
+  
   const queries: DefaultOptions["queries"] = {
     ...DEFAULT_QUERY_CONFIG,
-    retry: createSafeRetryStrategy(maxRetries500, maxRetriesOther),
+    retry: createSafeRetryStrategy(maxRetries4xx, maxRetries5xx, maxRetriesOther),
     retryDelay: exponentialBackoff,
     refetchOnWindowFocus: disableFocus ? false : true,
     refetchOnReconnect: disableReconnect ? false : true
   };
+  
   if (conditionalRefetchInterval !== undefined) {
     if (typeof conditionalRefetchInterval === "number") {
       (queries as any).refetchInterval = (_data: unknown, query: any) => (query?.state?.error ? false : conditionalRefetchInterval);
@@ -273,10 +373,16 @@ export function createErrorSafeConfig(options: {
       (queries as any).refetchInterval = conditionalRefetchInterval;
     }
   }
-  const mutations: DefaultOptions["mutations"] = { ...DEFAULT_MUTATION_CONFIG };
+  
+  const mutations: DefaultOptions["mutations"] = { 
+    ...DEFAULT_MUTATION_CONFIG,
+    retry: createSafeRetryStrategy(maxRetries4xx, maxRetries5xx, maxRetriesOther)
+  };
+  
   const result: DefaultOptions = {
     queries: { ...(queries as any), ...(overrides?.queries as any || {}) },
     mutations: { ...(mutations as any), ...(overrides?.mutations as any || {}) }
   };
+  
   return result;
 }
