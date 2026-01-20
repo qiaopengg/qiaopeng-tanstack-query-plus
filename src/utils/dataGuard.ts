@@ -5,23 +5,7 @@ import type {
   VersionedEntity,
   VersionedPaginatedResponse
 } from "../types/dataGuard.js";
-
-/**
- * Check if a query key starts with a given prefix
- */
-function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
-  const k = Array.isArray(key) ? key : [key];
-  const p = Array.isArray(prefix) ? prefix : [prefix];
-  
-  if (p.length > k.length) return false;
-  
-  for (let i = 0; i < p.length; i++) {
-    if (JSON.stringify(k[i]) !== JSON.stringify(p[i])) {
-      return false;
-    }
-  }
-  return true;
-}
+import { startsWithKeyPrefix } from "./queryKey.js";
 
 /**
  * 简单的字符串哈希函数（DJB2算法变体）
@@ -188,7 +172,13 @@ export function applyDataGuard<T extends VersionedEntity>(
       // 内容完全相同，不需要更新
       shouldReject = true;
       reason = "内容哈希相同，数据未变化";
-    } else if (cachedHash && cached._recentlyUpdatedIds && cached._recentlyUpdatedIds.size > 0) {
+    } else if (
+      cachedHash &&
+      cached._recentlyUpdatedIds &&
+      (Array.isArray(cached._recentlyUpdatedIds)
+        ? cached._recentlyUpdatedIds.length > 0
+        : cached._recentlyUpdatedIds.size > 0)
+    ) {
       // 检查最近更新的项是否被回退
       let hasRevert = false;
 
@@ -245,12 +235,16 @@ export function markRecentlyUpdated<T extends VersionedEntity>(
   data: VersionedPaginatedResponse<T>,
   updatedId: string | number
 ): VersionedPaginatedResponse<T> {
-  const recentlyUpdatedIds = new Set(data._recentlyUpdatedIds || []);
-  recentlyUpdatedIds.add(updatedId);
+  const existing = data._recentlyUpdatedIds
+    ? (Array.isArray(data._recentlyUpdatedIds) ? [...data._recentlyUpdatedIds] : Array.from(data._recentlyUpdatedIds))
+    : [];
+  if (!existing.includes(updatedId)) {
+    existing.push(updatedId);
+  }
 
   return {
     ...data,
-    _recentlyUpdatedIds: recentlyUpdatedIds
+    _recentlyUpdatedIds: existing
   };
 }
 
@@ -263,12 +257,12 @@ export function clearRecentlyUpdated<T extends VersionedEntity>(
 ): VersionedPaginatedResponse<T> {
   if (!data._recentlyUpdatedIds) return data;
 
-  const recentlyUpdatedIds = new Set(data._recentlyUpdatedIds);
-  recentlyUpdatedIds.delete(updatedId);
+  const existing = Array.isArray(data._recentlyUpdatedIds) ? data._recentlyUpdatedIds : Array.from(data._recentlyUpdatedIds);
+  const remaining = existing.filter((id) => id !== updatedId);
 
   return {
     ...data,
-    _recentlyUpdatedIds: recentlyUpdatedIds.size > 0 ? recentlyUpdatedIds : undefined
+    _recentlyUpdatedIds: remaining.length > 0 ? remaining : undefined
   };
 }
 

@@ -295,9 +295,11 @@ function App() {
     retryDelay: exponentialBackoff,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+    refetchOnMount: true,
   },
   mutations: {
     retry: 0,  // Mutation 默认不重试
+    retryDelay: exponentialBackoff,
     gcTime: 600000,
   }
 }
@@ -325,7 +327,13 @@ function App() {
 import { getConfigByEnvironment } from '@qiaopeng/tanstack-query-plus/core'
 
 // 根据环境自动选择配置
-const config = getConfigByEnvironment(process.env.NODE_ENV)
+const env =
+  process.env.NODE_ENV === 'production'
+    ? 'production'
+    : process.env.NODE_ENV === 'test'
+      ? 'test'
+      : 'development'
+const config = getConfigByEnvironment(env)
 const queryClient = new QueryClient({ defaultOptions: config })
 ```
 
@@ -339,6 +347,8 @@ const queryClient = new QueryClient({ defaultOptions: config })
 | refetchOnWindowFocus | true | true | false |
 
 *智能重试：4XX 不重试，5XX 最多 1 次，网络错误最多 2 次
+
+补充：还支持 `getConfigByEnvironment('longCache')` 与 `getConfigByEnvironment('realtime')` 两种预设，分别适用于“长缓存”与“高实时”场景。
 
 ### 3.5 自定义重试策略
 
@@ -1129,13 +1139,21 @@ batchDelete.mutate(['id1', 'id2', 'id3'])
 2. 使用离线队列在恢复网络后批量执行（稳健且可持久化）：
 
 ```tsx
-import { createOfflineQueueManager, mutationRegistry } from '@qiaopeng/tanstack-query-plus/features'
+import { createOfflineQueueManager, mutationRegistry, serializeMutationKey } from '@qiaopeng/tanstack-query-plus/features'
+import { MutationOperationType } from '@qiaopeng/tanstack-query-plus/types'
 
 const queue = createOfflineQueueManager({ storageKey: 'todo-ops', concurrency: 3 })
 
-function registerDelete(id: string) {
-  mutationRegistry.register(['todos','delete',id].join('-'), () => api.deleteTodo(id))
-  queue.add({ mutationKey: ['todos','delete',id], mutationFn: () => api.deleteTodo(id), priority: 1 })
+async function registerDelete(id: string) {
+  const key = serializeMutationKey(['todos', 'delete', id])
+  mutationRegistry.register(key, () => api.deleteTodo(id))
+  await queue.add({
+    type: MutationOperationType.DELETE,
+    mutationKey: ['todos', 'delete', id],
+    variables: { id },
+    mutationFn: () => api.deleteTodo(id),
+    priority: 1
+  })
 }
 ```
 
@@ -2710,7 +2728,8 @@ console.log({
 对于需要在离线时也能操作的应用，可以使用离线队列管理器：
 
 ```tsx
-import { createOfflineQueueManager, mutationRegistry } from '@qiaopeng/tanstack-query-plus/features'
+import { createOfflineQueueManager, isOnline, mutationRegistry, serializeMutationKey } from '@qiaopeng/tanstack-query-plus/features'
+import { MutationOperationType } from '@qiaopeng/tanstack-query-plus/types'
 
 // 创建队列管理器
 const queueManager = createOfflineQueueManager({
@@ -2723,15 +2742,17 @@ const queueManager = createOfflineQueueManager({
 
 // 注册 mutation 函数（用于恢复队列时执行）
 // 注册函数签名为 () => Promise<unknown>，如需变量请使用闭包或在入队项的 mutationFn 捕获
-mutationRegistry.register('updateUser', () => updateUserAPI(savedUserData))
-mutationRegistry.register('createPost', () => createPostAPI(savedPostData))
+mutationRegistry.register(serializeMutationKey(['updateUser']), () => updateUserAPI(savedUserData))
+mutationRegistry.register(serializeMutationKey(['createPost']), () => createPostAPI(savedPostData))
 
 // 添加操作到队列
 async function handleUpdateUser(userData) {
   if (!isOnline()) {
     // 离线时添加到队列
     await queueManager.add({
+      type: MutationOperationType.UPDATE,
       mutationKey: ['updateUser'],
+      variables: userData,
       mutationFn: () => updateUserAPI(userData),
       priority: 1,  // 优先级（数字越大越优先）
     })
@@ -2772,6 +2793,7 @@ queueManager.destroy()
 ```tsx
 import { useState, useEffect } from 'react'
 import { createOfflineQueueManager } from '@qiaopeng/tanstack-query-plus/features'
+import { MutationOperationType } from '@qiaopeng/tanstack-query-plus/types'
 import { useEnhancedQuery } from '@qiaopeng/tanstack-query-plus/hooks'
 import { useQueryClient, usePersistenceStatus } from '@qiaopeng/tanstack-query-plus'
 
@@ -2817,7 +2839,9 @@ function TodoApp() {
     if (!networkStatus) {
       // 离线：添加到队列
       await offlineQueue.add({
+        type: MutationOperationType.CREATE,
         mutationKey: ['addTodo'],
+        variables: todoData,
         mutationFn: () => api.createTodo(todoData),
         priority: 1,
       })
@@ -3675,7 +3699,13 @@ function UserProfile({ userId }) {
 import { QueryClient } from '@qiaopeng/tanstack-query-plus'
 import { getConfigByEnvironment, ensureBestPractices } from '@qiaopeng/tanstack-query-plus/core'
 
-const baseConfig = getConfigByEnvironment(process.env.NODE_ENV)
+const env =
+  process.env.NODE_ENV === 'production'
+    ? 'production'
+    : process.env.NODE_ENV === 'test'
+      ? 'test'
+      : 'development'
+const baseConfig = getConfigByEnvironment(env)
 
 // 确保配置符合最佳实践
 const config = ensureBestPractices({
@@ -3751,12 +3781,12 @@ function useUser(userId: string): EnhancedQueryResult<User, ApiError> {
 }
 
 // 类型安全的 mutation
-function useUpdateUser() {
+function useUpdateUser(userId: string) {
   return useMutation<User, ApiError, Partial<User>>({
-    mutationFn: (data) => updateUser(data),
+    mutationFn: (patch) => updateUser(userId, patch),
     optimistic: {
-      queryKey: ['user', data.id],
-      updater: (old, newData) => ({ ...old, ...newData }),
+      queryKey: ['user', userId],
+      updater: (old, patch) => (old ? ({ ...old, ...patch }) : old),
     },
   })
 }
@@ -3886,32 +3916,6 @@ useEnhancedQuery({
 3. **处理认证过期**：在全局错误处理中处理 401 错误
 4. **清理敏感缓存**：用户登出时清除缓存
 
----
-
-## 总结
-
-恭喜你完成了本教程！现在你已经掌握了 `@qiaopeng/tanstack-query-plus` 的所有核心功能：
-
-1. ✅ 配置 Provider 和最佳实践
-2. ✅ 基础查询和增强查询
-3. ✅ Query Key 管理
-4. ✅ 数据变更和乐观更新
-5. ✅ 无限滚动和分页
-6. ✅ 批量查询和仪表盘
-7. ✅ 智能预取策略
-8. ✅ Suspense 模式
-9. ✅ 离线支持和持久化
-10. ✅ 数据防护与安全
-11. ✅ 焦点管理
-12. ✅ 工具函数和选择器
-
-### 下一步
-
-- 查看 [GitHub 仓库](https://github.com/qiaopengg/qiaopeng-tanstack-query-plus) 获取最新更新
-- 阅读 [TanStack Query 官方文档](https://tanstack.com/query/latest) 了解更多底层概念
-- 在 [Issues](https://github.com/qiaopengg/qiaopeng-tanstack-query-plus/issues) 中提问或反馈
-
-祝你编码愉快！🚀
 ### 16.9 类型与错误处理规范
 
 - 明确类型参数：在增强 hooks 中显式标注 `TData` 与 `TError`，避免 `any` 漏出
@@ -3979,7 +3983,7 @@ useEnhancedQuery({
   - 数据防护：`useDataGuardQueryConfig`、`useDataGuardMutation`
 
 - `@qiaopeng/tanstack-query-plus/features`
-  - 离线：`setupOnlineManager`、`isOnline`、`createOfflineQueueManager`、`OfflineQueueManager`、`mutationRegistry`、`subscribeToOnlineStatus`
+  - 离线：`setupOnlineManager`、`isOnline`、`createOfflineQueueManager`、`OfflineQueueManager`、`mutationRegistry`、`serializeMutationKey`、`subscribeToOnlineStatus`
   - 持久化：`createPersistOptions`、`createPersister`、`clearCache`、`clearExpiredCache`、`checkStorageSize`、`getStorageStats`、`migrateToIndexedDB`
 
 - `@qiaopeng/tanstack-query-plus/components`
@@ -3999,3 +4003,28 @@ useEnhancedQuery({
   - 原生 API 再导出：`useQuery`、`useMutation`、`useInfiniteQuery`、`useSuspenseQuery` 等（src/react-query/index.ts:1）
 
 提示：完整导出列表可在 `package.json:33` 的 `exports` 字段中查看；顶层入口再导出常用原生 API，子路径按模块分层导出，便于 tree-shaking。
+
+---
+
+## 总结
+
+你已经覆盖了 `@qiaopeng/tanstack-query-plus` 的核心能力：
+
+1. ✅ 配置 Provider 和最佳实践
+2. ✅ 基础查询和增强查询
+3. ✅ Query Key 管理
+4. ✅ 数据变更和乐观更新
+5. ✅ 无限滚动和分页
+6. ✅ 批量查询和仪表盘
+7. ✅ 智能预取策略
+8. ✅ Suspense 模式
+9. ✅ 离线支持和持久化
+10. ✅ 数据防护与安全
+11. ✅ 焦点管理
+12. ✅ 工具函数和选择器
+
+### 下一步
+
+- 查看 [GitHub 仓库](https://github.com/qiaopengg/qiaopeng-tanstack-query-plus) 获取最新更新
+- 阅读 [TanStack Query 官方文档](https://tanstack.com/query/latest) 了解更多底层概念
+- 在 [Issues](https://github.com/qiaopengg/qiaopeng-tanstack-query-plus/issues) 中提问或反馈

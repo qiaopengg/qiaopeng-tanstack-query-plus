@@ -21,6 +21,24 @@ export const isOnline = () => onlineManager.isOnline();
 export function subscribeToOnlineStatus(callback: (online: boolean) => void) { return onlineManager.subscribe(callback); }
 export function configureOfflineQueries(_queryClient: QueryClient) {}
 
+function sortObjectKeys(value: any): any {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  const sorted: Record<string, any> = {};
+  Object.keys(value).sort().forEach((key) => { sorted[key] = sortObjectKeys(value[key]); });
+  return sorted;
+}
+
+export function serializeMutationKey(mutationKey: unknown): string {
+  try {
+    if (typeof mutationKey === "string") return mutationKey;
+    return JSON.stringify(sortObjectKeys(mutationKey));
+  } catch {
+    return String(mutationKey);
+  }
+}
+
 const DEFAULT_QUEUE_CONFIG: OfflineQueueConfig = { enabled: true, maxSize: 100, persist: true, storageKey: "tanstack-query-offline-queue", autoExecuteInterval: 5000, executeOnReconnect: true, operationTimeout: 30000, concurrency: 3 };
 export function calculateExponentialBackoff(attempt: number, baseDelay = 1000, maxDelay = 30000): number {
   const delay = Math.min(baseDelay * 2 ** attempt, maxDelay);
@@ -46,11 +64,13 @@ export class OfflineQueueManager {
   private executingOperations = new Set<string>();
   constructor(config: Partial<OfflineQueueConfig> = {}) {
     this.config = { ...DEFAULT_QUEUE_CONFIG, ...config };
+    if (!this.config.enabled) { return; }
     if (this.config.persist) { this.loadQueue(); }
     if (this.config.executeOnReconnect) { this.setupOnlineListener(); }
     if (this.config.autoExecuteInterval > 0) { this.startAutoExecution(); }
   }
   async add(operation: Omit<OfflineMutationOperation, "id" | "createdAt" | "retryCount">): Promise<string> {
+    if (!this.config.enabled) { throw new Error("Offline queue is disabled"); }
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newOperation: OfflineMutationOperation = { ...operation, id, createdAt: new Date(), retryCount: 0 };
     if (this.queue.length >= this.config.maxSize) { throw new Error(`Queue is full (max size: ${this.config.maxSize})`); }
@@ -73,6 +93,7 @@ export class OfflineQueueManager {
   getOperations(): OfflineMutationOperation[] { return [...this.queue]; }
   async clear(): Promise<void> { this.queue = []; if (this.config.persist) { await this.persistQueue(); } }
   async execute(): Promise<{ success: number; failed: number; skipped: number }> {
+    if (!this.config.enabled) { return { success: 0, failed: 0, skipped: this.queue.length }; }
     if (this.isExecuting) { return { success: 0, failed: 0, skipped: this.queue.length }; }
     if (!isOnline()) { return { success: 0, failed: 0, skipped: this.queue.length }; }
     this.isExecuting = true;
@@ -99,8 +120,9 @@ export class OfflineQueueManager {
     }
     this.executingOperations.add(operation.id);
     try {
-      const mutationKey = Array.isArray(operation.mutationKey) ? operation.mutationKey.join("-") : String(operation.mutationKey);
-      const mutationFn = mutationRegistry.get(mutationKey) || operation.mutationFn;
+      const mutationKey = serializeMutationKey(operation.mutationKey);
+      const legacyMutationKey = Array.isArray(operation.mutationKey) ? operation.mutationKey.join("-") : String(operation.mutationKey);
+      const mutationFn = mutationRegistry.get(mutationKey) || mutationRegistry.get(legacyMutationKey) || operation.mutationFn;
       const timeoutPromise = new Promise<never>((_, reject) => { setTimeout(() => reject(new Error("Operation timeout")), this.config.operationTimeout); });
       await Promise.race([mutationFn(), timeoutPromise]);
       await this.remove(operation.id);

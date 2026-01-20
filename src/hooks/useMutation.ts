@@ -41,9 +41,9 @@ export function useMutation<TData = unknown, TError = Error, TVariables = void, 
   type MutationCtx = MutationContext<unknown, TContext>;
   const mutationConfig: TanStackUseMutationOptions<TData, TError, TVariables, MutationCtx> = {
     ...restOptions,
-    retry: restOptions.retry ?? DEFAULT_MUTATION_CONFIG?.retry,
-    retryDelay: restOptions.retryDelay ?? DEFAULT_MUTATION_CONFIG?.retryDelay,
-    gcTime: restOptions.gcTime ?? DEFAULT_MUTATION_CONFIG?.gcTime
+    retry: restOptions.retry ?? DEFAULT_MUTATION_CONFIG.retry,
+    retryDelay: restOptions.retryDelay ?? DEFAULT_MUTATION_CONFIG.retryDelay,
+    gcTime: restOptions.gcTime ?? DEFAULT_MUTATION_CONFIG.gcTime
   } as TanStackUseMutationOptions<TData, TError, TVariables, MutationCtx>;
   
   if (!optimistic) {

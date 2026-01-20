@@ -97,7 +97,7 @@ export function exponentialBackoff(attemptIndex: number): number {
   return Math.min(1000 * 2 ** attemptIndex, 30000);
 }
 
-export const DEFAULT_QUERY_CONFIG: DefaultOptions["queries"] = {
+export const DEFAULT_QUERY_CONFIG: NonNullable<DefaultOptions["queries"]> = {
   staleTime: DEFAULT_STALE_TIME,
   gcTime: DEFAULT_GC_TIME,
   retry: defaultQueryRetryStrategy,
@@ -107,7 +107,7 @@ export const DEFAULT_QUERY_CONFIG: DefaultOptions["queries"] = {
   refetchOnMount: true
 };
 
-export const DEFAULT_MUTATION_CONFIG: DefaultOptions["mutations"] = {
+export const DEFAULT_MUTATION_CONFIG: NonNullable<DefaultOptions["mutations"]> = {
   retry: 0,
   retryDelay: exponentialBackoff,
   gcTime: DEFAULT_GC_TIME
@@ -180,12 +180,18 @@ export const REALTIME_CONFIG: DefaultOptions = {
   mutations: DEFAULT_MUTATION_CONFIG
 };
 
-export function getConfigByEnvironment(env: "development" | "production" | "test"): DefaultOptions {
+export function getConfigByEnvironment(
+  env: "development" | "production" | "test" | "realtime" | "longCache"
+): DefaultOptions {
   switch (env) {
     case "development":
       return DEVELOPMENT_CONFIG;
     case "production":
       return PRODUCTION_CONFIG;
+    case "realtime":
+      return REALTIME_CONFIG;
+    case "longCache":
+      return LONG_CACHE_CONFIG;
     case "test":
       return {
         queries: {
@@ -261,35 +267,42 @@ export function validateConfig(config: DefaultOptions): { isValid: boolean; warn
 export function ensureBestPractices(config: DefaultOptions): DefaultOptions {
   const result: DefaultOptions = { ...config };
   if (result.queries) {
-    const queries = { ...result.queries } as Record<string, unknown> & { cacheTime?: number; gcTime?: number };
+    const queries = { ...result.queries };
+    
+    // Handle deprecated cacheTime -> gcTime mapping
     if ("cacheTime" in queries) {
-      const cacheTime = queries.cacheTime;
-      if (typeof cacheTime === "number" && typeof queries.gcTime !== "number") {
+      const cacheTime = (queries as any).cacheTime;
+      if (typeof cacheTime === "number" && queries.gcTime === undefined) {
         queries.gcTime = cacheTime;
       }
-      delete queries.cacheTime;
+      delete (queries as any).cacheTime;
       if (!isProd) {
         console.warn("[TanStack Query Config] 已移除废弃的 'cacheTime' 属性，改用 'gcTime'.");
       }
     }
-    const staleTime = typeof (queries as any).staleTime === "number" ? ((queries as any).staleTime as number) : DEFAULT_STALE_TIME;
+
+    const staleTime = typeof queries.staleTime === "number" ? queries.staleTime : DEFAULT_STALE_TIME;
     const gcTime = typeof queries.gcTime === "number" ? queries.gcTime : DEFAULT_GC_TIME;
     const validation = validateGcTime(staleTime, gcTime);
+    
     if (!validation.isValid) {
-      (queries as any).gcTime = staleTime + TIME_CONSTANTS.ONE_MINUTE;
+      queries.gcTime = staleTime + TIME_CONSTANTS.ONE_MINUTE;
       if (!isProd) {
         console.warn(
-          `[TanStack Query Config] 自动调整 gcTime 从 ${gcTime}ms 到 ${(queries as any).gcTime}ms，以确保大于 staleTime (${staleTime}ms)。`
+          `[TanStack Query Config] 自动调整 gcTime 从 ${gcTime}ms 到 ${queries.gcTime}ms，以确保大于 staleTime (${staleTime}ms)。`
         );
       }
     }
-    if (typeof (queries as any).retryDelay === "number" || !(queries as any).retryDelay) {
-      (queries as any).retryDelay = exponentialBackoff;
+    
+    if (queries.retryDelay === undefined) {
+      queries.retryDelay = exponentialBackoff;
     }
-    if ((queries as any).refetchOnWindowFocus === undefined) {
-      (queries as any).refetchOnWindowFocus = true;
+    
+    if (queries.refetchOnWindowFocus === undefined) {
+      queries.refetchOnWindowFocus = true;
     }
-    result.queries = queries as any;
+    
+    result.queries = queries;
   }
   return result;
 }
@@ -345,7 +358,7 @@ export function createErrorSafeConfig(options: {
   maxRetriesOther?: number;
   disableFocus?: boolean;
   disableReconnect?: boolean;
-  conditionalRefetchInterval?: number | ((data: unknown, query: any) => number | false);
+  conditionalRefetchInterval?: number | ((query: any) => number | false) | ((data: unknown, query: any) => number | false);
   overrides?: Partial<DefaultOptions>;
 } = {}): DefaultOptions {
   const {
@@ -368,9 +381,10 @@ export function createErrorSafeConfig(options: {
   
   if (conditionalRefetchInterval !== undefined) {
     if (typeof conditionalRefetchInterval === "number") {
-      (queries as any).refetchInterval = (_data: unknown, query: any) => (query?.state?.error ? false : conditionalRefetchInterval);
+      (queries as any).refetchInterval = (query: any) => (query?.state?.error ? false : conditionalRefetchInterval);
     } else {
-      (queries as any).refetchInterval = conditionalRefetchInterval;
+      const fn = conditionalRefetchInterval;
+      (queries as any).refetchInterval = (query: any) => (fn.length >= 2 ? (fn as any)(query?.state?.data, query) : (fn as any)(query));
     }
   }
   

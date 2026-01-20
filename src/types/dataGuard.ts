@@ -25,7 +25,7 @@ export interface VersionedPaginatedResponse<T> {
   version?: number;
   updatedAt?: string;
   _hash?: string;
-  _recentlyUpdatedIds?: Set<string | number>;
+  _recentlyUpdatedIds?: Array<string | number> | Set<string | number>;
 }
 
 /**

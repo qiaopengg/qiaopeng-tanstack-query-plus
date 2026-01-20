@@ -2,7 +2,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider as TanStackPersistProvider } from "@tanstack/react-query-persist-client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { TIME_CONSTANTS } from "./core/config.js";
 import { isOnline, setupOnlineManager, subscribeToOnlineStatus } from "./features/offline.js";
 import { clearCache, createPersister } from "./features/persistence.js";
 
@@ -31,18 +32,27 @@ export function PersistQueryClientProvider({
     }
   }, [enableOfflineSupport]);
 
+  const persister = useMemo(() => {
+    if (!enablePersistence) return null;
+    return createPersister(cacheKey, undefined, _onPersistError);
+  }, [cacheKey, enablePersistence, _onPersistError]);
+
+  const persistOptions = useMemo(() => {
+    if (!persister) return null;
+    return {
+      persister,
+      maxAge: TIME_CONSTANTS.ONE_DAY
+    };
+  }, [persister]);
+
   if (enablePersistence) {
-    const persister = createPersister(cacheKey, undefined, _onPersistError);
-    if (!persister) {
+    if (!persistOptions) {
       return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
     }
     return (
       <TanStackPersistProvider
         client={client}
-        persistOptions={{
-          persister,
-          maxAge: 1000 * 60 * 60 * 24
-        }}
+        persistOptions={persistOptions}
         onSuccess={onPersistRestore}
       >
         {children}

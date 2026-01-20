@@ -1,3 +1,5 @@
+import type { QueryKey } from "@tanstack/react-query";
+
 export interface NormalizeConfig<T = any> { required?: (keyof T)[]; defaults?: Partial<T>; sortKeys?: boolean; removeEmpty?: boolean }
 export function normalizeQueryParams<T extends Record<string, any>>(params: T | undefined, config: NormalizeConfig<T> = {}): Record<string, any> {
   const { required = [], defaults = {}, sortKeys = true, removeEmpty = true } = config;
@@ -52,4 +54,16 @@ export function extractParamsFromKey(queryKey: readonly any[]): Record<string, a
   const lastItem = queryKey[queryKey.length - 1];
   if (typeof lastItem === "object" && lastItem !== null && !Array.isArray(lastItem)) { return lastItem; }
   return undefined;
+}
+
+export function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
+  const k = Array.isArray(key) ? key : [key];
+  const p = Array.isArray(prefix) ? prefix : [prefix];
+  if (p.length > k.length) return false;
+  for (let i = 0; i < p.length; i++) {
+    if (JSON.stringify(k[i]) !== JSON.stringify(p[i])) {
+      return false;
+    }
+  }
+  return true;
 }

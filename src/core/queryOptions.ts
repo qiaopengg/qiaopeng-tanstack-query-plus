@@ -1,6 +1,6 @@
 import type { DefaultError, QueryFunction, QueryKey, UseQueryOptions } from "@tanstack/react-query";
 import { queryOptions } from "@tanstack/react-query";
-import { DEFAULT_GC_TIME, DEFAULT_STALE_TIME, defaultQueryRetryStrategy, exponentialBackoff } from "./config.js";
+import { DEFAULT_GC_TIME, DEFAULT_QUERY_CONFIG, DEFAULT_STALE_TIME } from "./config.js";
 
 export interface BaseQueryConfig<TData> {
   queryKey: QueryKey;
@@ -12,16 +12,12 @@ export interface BaseQueryConfig<TData> {
 
 export function createAppQueryOptions<TData>(config: BaseQueryConfig<TData>): UseQueryOptions<TData, DefaultError, TData, QueryKey> {
   return queryOptions<TData, DefaultError, TData, QueryKey>({
+    ...(DEFAULT_QUERY_CONFIG as UseQueryOptions<TData, DefaultError, TData, QueryKey>),
     queryKey: config.queryKey,
     queryFn: config.queryFn,
-    staleTime: config.staleTime ?? DEFAULT_STALE_TIME,
-    gcTime: config.gcTime ?? DEFAULT_GC_TIME,
+    staleTime: config.staleTime ?? (DEFAULT_QUERY_CONFIG.staleTime as number) ?? DEFAULT_STALE_TIME,
+    gcTime: config.gcTime ?? (DEFAULT_QUERY_CONFIG.gcTime as number) ?? DEFAULT_GC_TIME,
     enabled: config.enabled,
-    retry: defaultQueryRetryStrategy,
-    retryDelay: exponentialBackoff,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    refetchOnMount: true
   });
 }
 
@@ -31,16 +27,12 @@ export interface SelectQueryConfig<TData, TSelected = TData> extends Omit<BaseQu
 
 export function createAppQueryOptionsWithSelect<TData, TSelected = TData>(config: SelectQueryConfig<TData, TSelected>): UseQueryOptions<TData, DefaultError, TSelected, QueryKey> {
   return queryOptions<TData, DefaultError, TSelected, QueryKey>({
+    ...(DEFAULT_QUERY_CONFIG as UseQueryOptions<TData, DefaultError, TSelected, QueryKey>),
     queryKey: config.queryKey,
     queryFn: config.queryFn,
     select: config.select,
-    staleTime: config.staleTime ?? DEFAULT_STALE_TIME,
-    gcTime: config.gcTime ?? DEFAULT_GC_TIME,
-    retry: defaultQueryRetryStrategy,
-    retryDelay: exponentialBackoff,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    refetchOnMount: true
+    staleTime: config.staleTime ?? (DEFAULT_QUERY_CONFIG.staleTime as number) ?? DEFAULT_STALE_TIME,
+    gcTime: config.gcTime ?? (DEFAULT_QUERY_CONFIG.gcTime as number) ?? DEFAULT_GC_TIME,
   });
 }
 
@@ -51,15 +43,11 @@ export interface ListQueryConfig<TData> extends Omit<BaseQueryConfig<TData>, "st
 
 export function createListQueryOptions<TData>(config: ListQueryConfig<TData>): UseQueryOptions<TData, DefaultError, TData, QueryKey> {
   return queryOptions<TData, DefaultError, TData, QueryKey>({
+    ...(DEFAULT_QUERY_CONFIG as UseQueryOptions<TData, DefaultError, TData, QueryKey>),
     queryKey: config.queryKey,
     queryFn: config.queryFn,
     staleTime: config.staleTime ?? 0,
-    gcTime: config.gcTime ?? DEFAULT_GC_TIME,
+    gcTime: config.gcTime ?? (DEFAULT_QUERY_CONFIG.gcTime as number) ?? DEFAULT_GC_TIME,
     enabled: config.enabled,
-    retry: defaultQueryRetryStrategy,
-    retryDelay: exponentialBackoff,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    refetchOnMount: true
   });
 }

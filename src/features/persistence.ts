@@ -1,5 +1,6 @@
 import type { Query } from "@tanstack/react-query";
 import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
+import { TIME_CONSTANTS } from "../core/config.js";
 
 function isSerializable(data: unknown): boolean {
   try { JSON.stringify(data); return true; } catch { return false; }
@@ -23,7 +24,7 @@ function createSafeStorage(storage: Storage, key: string): Storage {
 }
 export interface PersistOptions { maxAge?: number; onlyPersistSuccess?: boolean; dehydrateOptions?: { shouldDehydrateQuery?: (query: Query) => boolean } }
 export function createPersistOptions(config: Partial<PersistOptions> = {}): { maxAge: number; dehydrateOptions?: { shouldDehydrateQuery?: (query: Query) => boolean } } {
-  const { maxAge = 1000 * 60 * 60 * 24, onlyPersistSuccess = true, dehydrateOptions } = config;
+  const { maxAge = TIME_CONSTANTS.ONE_DAY, onlyPersistSuccess = true, dehydrateOptions } = config;
   return {
     maxAge,
     dehydrateOptions: {
@@ -55,7 +56,7 @@ export function createPersister(storageKey = "tanstack-query-cache", storage?: S
   } catch { return undefined; }
 }
 export function clearCache(key = "tanstack-query-cache"): void { try { window.localStorage.removeItem(key); } catch {} }
-export function clearExpiredCache(key = "tanstack-query-cache", maxAge = 1000 * 60 * 60 * 24): void {
+export function clearExpiredCache(key = "tanstack-query-cache", maxAge = TIME_CONSTANTS.ONE_DAY): void {
   try {
     const stored = window.localStorage.getItem(key);
     if (!stored) return;
