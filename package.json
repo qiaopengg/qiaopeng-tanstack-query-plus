@@ -1,6 +1,6 @@
 {
   "name": "@qiaopeng/tanstack-query-plus",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "description": "Enhanced TanStack Query toolkit: defaults, hooks, persistence, offline, data guard, utils",
   "author": "qiaopeng",
   "license": "MIT",
