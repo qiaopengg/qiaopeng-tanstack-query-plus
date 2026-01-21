@@ -27,11 +27,8 @@ export {
 } from "./useFocusManager.js";
 export { createCursorPaginationOptions, createInfiniteQueryOptions, createOffsetPaginationOptions, createPageNumberPaginationOptions, useEnhancedInfiniteQuery } from "./useInfiniteQuery.js";
 export {
-  cancelQueriesBatch,
-  invalidateQueriesBatch,
   type MutationDefaultsConfig,
   type MutationKey,
-  setQueryDataBatch,
   setupMutationDefaults,
   useListMutation,
   useMutation

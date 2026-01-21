@@ -67,3 +67,19 @@ export function startsWithKeyPrefix(key: QueryKey, prefix: QueryKey): boolean {
   }
   return true;
 }
+
+export function deriveFamilyKey(queryKey: QueryKey): QueryKey {
+  const arr = Array.isArray(queryKey) ? [...queryKey] : [queryKey as unknown];
+  while (arr.length > 1) {
+    const last = arr[arr.length - 1];
+    if (last && typeof last === "object" && !Array.isArray(last)) { arr.pop(); continue; }
+    if (typeof last === "string" && (last === "paginated" || last === "filtered" || last === "sorted" || last === "search" || last === "complex")) { arr.pop(); continue; }
+    break;
+  }
+  return arr as unknown as QueryKey;
+}
+
+export function isListFamilyKey(queryKey: QueryKey): boolean {
+  const parts = Array.isArray(queryKey) ? queryKey : [queryKey as unknown];
+  return parts.includes("list") || parts.includes("paginated");
+}

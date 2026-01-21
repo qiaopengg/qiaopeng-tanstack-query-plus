@@ -3,7 +3,8 @@ export { getNetworkInfo, getNetworkSpeed, isFastNetwork, isSlowNetwork, type Nav
 export { batchRemoveItems, batchUpdateItems, conditionalUpdateItems, createAddItemConfig, createListOperationConfig, createRemoveItemConfig, createUpdateItemConfig, type ListOperationVariables, listUpdater, reorderItems } from "./optimisticUtils.js";
 export { keepPreviousData, stableListPlaceholder } from "./placeholderData.js";
 export { getPrefetchManager, type InteractionRecord, type NetworkSpeed, type PredictionResult, type PrefetchConfig, type PrefetchStats, type PrefetchTask, resetPrefetchManager, SmartPrefetchManager } from "./prefetchManager.js";
-export { createQueryKeyFactory, createSimpleQueryKeyFactory, extractParamsFromKey, isQueryKeyEqual, startsWithKeyPrefix, type NormalizeConfig, normalizeQueryParams, type QueryKeyFactory, type QueryKeyFactoryConfig } from "./queryKey.js";
+export { createQueryKeyFactory, createSimpleQueryKeyFactory, extractParamsFromKey, isQueryKeyEqual, startsWithKeyPrefix, deriveFamilyKey, isListFamilyKey, type NormalizeConfig, normalizeQueryParams, type QueryKeyFactory, type QueryKeyFactoryConfig } from "./queryKey.js";
 export { compose, selectById, selectByIds, selectCount, selectField, selectFields, selectFirst, selectItems, selectLast, selectMap, selectors, selectTotal, selectWhere } from "./selectors.js";
 export { deepClone, formatBytes, getStorageUsage, isStorageAvailable } from "./storage.js";
 export { applyDataGuard, addHashToData, hashObject, markRecentlyUpdated, clearRecentlyUpdated, updateFamilyMetadata } from "./dataGuard.js";
+export { invalidateQueriesBatch, cancelQueriesBatch, setQueryDataBatch, type BatchTask } from "./queryClientUtils.js";

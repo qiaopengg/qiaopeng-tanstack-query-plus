@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/qiaopengg/qiaopeng-tanstack-query-plus#readme",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
@@ -33,42 +33,52 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
     },
     "./react-query": {
       "import": "./dist/react-query/index.js",
+      "require": "./dist/react-query/index.cjs",
       "types": "./dist/react-query/index.d.ts"
     },
     "./core": {
       "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs",
       "types": "./dist/core/index.d.ts"
     },
     "./core/devtools": {
       "import": "./dist/core/devtools.js",
+      "require": "./dist/core/devtools.cjs",
       "types": "./dist/core/devtools.d.ts"
     },
     "./hooks": {
       "import": "./dist/hooks/index.js",
+      "require": "./dist/hooks/index.cjs",
       "types": "./dist/hooks/index.d.ts"
     },
     "./hooks/inview": {
       "import": "./dist/hooks/useInViewPrefetch.js",
+      "require": "./dist/hooks/useInViewPrefetch.cjs",
       "types": "./dist/hooks/useInViewPrefetch.d.ts"
     },
     "./features": {
       "import": "./dist/features/index.js",
+      "require": "./dist/features/index.cjs",
       "types": "./dist/features/index.d.ts"
     },
     "./components": {
       "import": "./dist/components/index.js",
+      "require": "./dist/components/index.cjs",
       "types": "./dist/components/index.d.ts"
     },
     "./types": {
       "import": "./dist/types/index.js",
+      "require": "./dist/types/index.cjs",
       "types": "./dist/types/index.d.ts"
     },
     "./utils": {
       "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs",
       "types": "./dist/utils/index.d.ts"
     }
   },
@@ -108,7 +118,7 @@
     "typescript": "^5.4.0"
   },
   "scripts": {
-    "build": "tsc -p ./tsconfig.json",
+    "build": "tsup",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build"
   }

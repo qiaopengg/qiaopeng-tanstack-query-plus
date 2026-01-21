@@ -3,37 +3,11 @@ import type { MutationContext, MutationOptions } from "../types";
 import type { EntityWithId } from "../types/selectors";
 import { useQueryClient, useMutation as useTanStackMutation } from "@tanstack/react-query";
 import { DEFAULT_MUTATION_CONFIG } from "../core/config.js";
+import { deriveFamilyKey, isListFamilyKey } from "../utils/queryKey.js";
+
 export type { MutationKey };
 
 export interface MutationDefaultsConfig { [key: string]: TanStackUseMutationOptions<any, any, any, any> }
-
-function deriveFamilyKey(queryKey: QueryKey): QueryKey {
-  const arr = Array.isArray(queryKey) ? [...queryKey] : [queryKey as unknown];
-  while (arr.length > 1) {
-    const last = arr[arr.length - 1];
-    if (last && typeof last === "object" && !Array.isArray(last)) { arr.pop(); continue; }
-    if (typeof last === "string" && (last === "paginated" || last === "filtered" || last === "sorted" || last === "search" || last === "complex")) { arr.pop(); continue; }
-    break;
-  }
-  return arr as unknown as QueryKey;
-}
-
-function isListFamilyKey(queryKey: QueryKey): boolean {
-  const parts = Array.isArray(queryKey) ? queryKey : [queryKey as unknown];
-  return parts.includes("list") || parts.includes("paginated");
-}
-
-export function invalidateQueriesBatch(queryClient: QueryClient, tasks: any[]) {
-  tasks.forEach(task => queryClient.invalidateQueries(task));
-}
-
-export function cancelQueriesBatch(queryClient: QueryClient, tasks: any[]) {
-  tasks.forEach(task => queryClient.cancelQueries(task));
-}
-
-export function setQueryDataBatch(queryClient: QueryClient, tasks: any[]) {
-  tasks.forEach(task => queryClient.setQueryData(task.queryKey, task.data));
-}
 
 export function useMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(options: MutationOptions<TData, TError, TVariables, TContext>): UseMutationResult<TData, TError, TVariables, TContext> {
   const queryClient = useQueryClient();
