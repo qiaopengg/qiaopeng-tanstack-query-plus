@@ -12,15 +12,16 @@
 6. [第四步：管理 Query Key](#6-第四步管理-query-key)
 7. [第五步：数据变更与乐观更新](#7-第五步数据变更与乐观更新)
 8. [第六步：无限滚动与分页](#8-第六步无限滚动与分页)
-9. [第七步：批量查询与仪表盘](#9-第七步批量查询与仪表盘)
-10. [第八步：智能预取](#10-第八步智能预取)
-11. [第九步：Suspense 模式](#11-第九步suspense-模式)
-12. [第十步：离线支持与持久化](#12-第十步离线支持与持久化)
-13. [第十一步：数据防护与安全](#13-第十一步数据防护与安全)
-14. [第十二步：焦点管理](#14-第十二步焦点管理)
-15. [第十三步：工具函数与选择器](#15-第十三步工具函数与选择器)
-16. [最佳实践与常见问题](#16-最佳实践与常见问题)
-17. [API 索引](#17-api-索引)
+9. [第七步：全局状态与 Mutation 监控](#9-第七步全局状态与-mutation-监控)
+10. [第八步：批量查询与仪表盘](#10-第八步批量查询与仪表盘)
+11. [第九步：智能预取](#11-第九步智能预取)
+12. [第十步：Suspense 模式与 SSR](#12-第十步suspense-模式与-ssr)
+13. [第十一步：离线支持与持久化](#13-第十一步离线支持与持久化)
+14. [第十二步：数据防护与安全](#14-第十二步数据防护与安全)
+15. [第十三步：焦点管理](#15-第十三步焦点管理)
+16. [第十四步：工具函数与选择器](#16-第十四步工具函数与选择器)
+17. [最佳实践与常见问题](#17-最佳实践与常见问题)
+18. [API 索引](#18-api-索引)
 
 ---
 
@@ -1631,7 +1632,62 @@ const result = useEnhancedInfiniteQuery(customOptions)
 
 ---
 
-## 9. 第七步：批量查询与仪表盘
+## 9. 第七步：全局状态与 Mutation 监控
+
+在复杂的应用中，你可能需要监控全局的加载状态，或者获取正在进行的 Mutation 进度。本库补全了 v5 的状态监控 Hooks。
+
+### 9.1 监控全局加载状态
+
+使用 `useIsFetching` 和 `useIsMutating` 可以实时感知后台活动：
+
+```tsx
+import { useIsFetching, useIsMutating } from '@qiaopeng/tanstack-query-plus/hooks'
+
+function GlobalLoadingIndicator() {
+  const isFetching = useIsFetching() // 正在进行的 Query 数量
+  const isMutating = useIsMutating() // 正在进行的 Mutation 数量
+
+  if (!isFetching && !isMutating) return null
+
+  return (
+    <div className="fixed top-0 right-0 p-4">
+      {isFetching > 0 && <span>数据加载中...</span>}
+      {isMutating > 0 && <span>后台同步中...</span>}
+    </div>
+  )
+}
+```
+
+### 9.2 监控 Mutation 详细状态
+
+`useMutationState` 允许你订阅 Mutation 缓存，获取特定任务的进度或结果：
+
+```tsx
+import { useMutationState } from '@qiaopeng/tanstack-query-plus/hooks'
+
+function UploadManager() {
+  // 获取所有 ['upload'] 相关的 mutation 状态
+  const uploads = useMutationState({
+    filters: { mutationKey: ['upload'], status: 'pending' },
+    select: (mutation) => mutation.state.variables,
+  })
+
+  return (
+    <div>
+      <h3>正在上传 ({uploads.length})</h3>
+      <ul>
+        {uploads.map((file, i) => (
+          <li key={i}>{file.name} 正在传输...</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+---
+
+## 10. 第八步：批量查询与仪表盘
 
 
 在仪表盘、数据概览等场景中，我们经常需要同时发起多个查询。本库提供了强大的批量查询功能，包括统计信息、批量操作和错误聚合。
@@ -2284,74 +2340,49 @@ function ProductBrowser() {
 
 ---
 
-## 11. 第九步：Suspense 模式
+## 12. 第十步：Suspense 模式与 SSR
 
+React Suspense 提供了声明式的加载处理。本库不仅支持增强的 Suspense Hooks，还提供了完善的 SSR 水合支持。
 
-React Suspense 是一种声明式的加载状态处理方式。配合 TanStack Query 的 Suspense 模式，可以让组件代码更简洁，不再需要手动处理 `isLoading` 状态。
+### 12.1 基础 Suspense 查询
 
-### 11.1 传统模式 vs Suspense 模式
-
-**传统模式：**
-```tsx
-function UserProfile({ userId }) {
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['user', userId],
-    queryFn: () => fetchUser(userId),
-  })
-
-  if (isLoading) return <Loading />
-  if (isError) return <Error message={error.message} />
-  
-  return <div>{data.name}</div>
-}
-```
-
-**Suspense 模式：**
-```tsx
-function UserProfile({ userId }) {
-  // 数据一定存在，不需要处理 loading 状态
-  const { data } = useSuspenseQuery({
-    queryKey: ['user', userId],
-    queryFn: () => fetchUser(userId),
-  })
-  
-  return <div>{data.name}</div>
-}
-
-// 在父组件处理 loading 和 error
-function UserPage({ userId }) {
-  return (
-    <Suspense fallback={<Loading />}>
-      <ErrorBoundary fallback={<Error />}>
-        <UserProfile userId={userId} />
-      </ErrorBoundary>
-    </Suspense>
-  )
-}
-```
-
-### 11.2 使用增强 Suspense 查询
+`useEnhancedSuspenseQuery` 保证 `data` 始终存在，省去非空判断：
 
 ```tsx
 import { useEnhancedSuspenseQuery } from '@qiaopeng/tanstack-query-plus/hooks'
 
-function UserData({ userId }) {
+function UserProfile({ userId }) {
   const { data } = useEnhancedSuspenseQuery({
     queryKey: ['user', userId],
     queryFn: () => fetchUser(userId),
   })
+  
+  return <div>{data.name}</div>
+}
+```
 
-  // data 一定存在，TypeScript 类型也是非空的
+### 12.2 SSR 水合支持
+
+在 Next.js (App Router) 或其他 SSR 框架中，使用 `HydrationBoundary` 进行注水：
+
+```tsx
+// Server Component
+import { dehydrate, QueryClient } from '@qiaopeng/tanstack-query-plus'
+import { HydrationBoundary } from '@qiaopeng/tanstack-query-plus/components'
+
+export default async function Page() {
+  const queryClient = new QueryClient()
+  await queryClient.prefetchQuery({ queryKey: ['posts'], queryFn: fetchPosts })
+
   return (
-    <div>
-      <h1>{data.name}</h1>
-      <p>{data.email}</p>
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <PostsList />
+    </HydrationBoundary>
   )
 }
 ```
 
-### 11.3 使用 SuspenseWrapper 组件
+### 12.3 使用 SuspenseWrapper 组件
 
 本库提供了 `SuspenseWrapper` 和 `QuerySuspenseWrapper` 组件，它们组合了 Suspense 和 ErrorBoundary：
 
@@ -3989,7 +4020,7 @@ useEnhancedQuery({
 - `@qiaopeng/tanstack-query-plus/components`
   - Loading：`DefaultLoadingFallback`、`FullScreenLoading`、`ListSkeletonFallback`、`PageSkeletonFallback`、`SmallLoadingIndicator`、`TextSkeletonFallback`
   - 错误边界：`QueryErrorBoundary`
-  - Suspense：`SuspenseWrapper`、`QuerySuspenseWrapper`
+  - Suspense & SSR：`SuspenseWrapper`、`QuerySuspenseWrapper`、`HydrationBoundary`
 
 - `@qiaopeng/tanstack-query-plus/utils`
   - 选择器：`selectById`、`selectFields`、`compose` 等

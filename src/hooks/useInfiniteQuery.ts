@@ -4,10 +4,10 @@ import { infiniteQueryOptions, useInfiniteQuery } from "@tanstack/react-query";
 export function useEnhancedInfiniteQuery<TQueryFnData = unknown, TError = DefaultError, TData = TQueryFnData, TQueryKey extends QueryKey = QueryKey, TPageParam = unknown>(options: UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>): UseInfiniteQueryResult<TData, TError> {
   return useInfiniteQuery(options);
 }
-export function createInfiniteQueryOptions<TQueryFnData = unknown, TQueryKey extends QueryKey = QueryKey, TPageParam = unknown>(config: { queryKey: TQueryKey; queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam>; initialPageParam: TPageParam; getNextPageParam: (lastPage: TQueryFnData, allPages: TQueryFnData[], lastPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; getPreviousPageParam?: (firstPage: TQueryFnData, allPages: TQueryFnData[], firstPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; staleTime?: number; gcTime?: number }): UseInfiniteQueryOptions<TQueryFnData, DefaultError, TQueryFnData, TQueryKey, TPageParam> {
-  return infiniteQueryOptions(config);
+export function createInfiniteQueryOptions<TQueryFnData = unknown, TQueryKey extends QueryKey = QueryKey, TPageParam = unknown>(config: { queryKey: TQueryKey; queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam>; initialPageParam: TPageParam; getNextPageParam: (lastPage: TQueryFnData, allPages: TQueryFnData[], lastPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; getPreviousPageParam?: (firstPage: TQueryFnData, allPages: TQueryFnData[], firstPageParam: TPageParam, allPageParams: TPageParam[]) => TPageParam | undefined | null; staleTime?: number; gcTime?: number; maxPages?: number }): UseInfiniteQueryOptions<TQueryFnData, DefaultError, TQueryFnData, TQueryKey, TPageParam> {
+  return infiniteQueryOptions({ ...config, maxPages: config.maxPages });
 }
-export function createCursorPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (cursor: string | null) => Promise<CursorPaginatedResponse<T>>; initialCursor?: string | null; staleTime?: number; gcTime?: number }): UseInfiniteQueryOptions<CursorPaginatedResponse<T>, DefaultError, CursorPaginatedResponse<T>, QueryKey, string | null> {
+export function createCursorPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (cursor: string | null) => Promise<CursorPaginatedResponse<T>>; initialCursor?: string | null; staleTime?: number; gcTime?: number; maxPages?: number }): UseInfiniteQueryOptions<CursorPaginatedResponse<T>, DefaultError, CursorPaginatedResponse<T>, QueryKey, string | null> {
   return createInfiniteQueryOptions({
     queryKey: config.queryKey,
     queryFn: ({ pageParam }) => config.queryFn(pageParam as string | null),
@@ -15,10 +15,11 @@ export function createCursorPaginationOptions<T>(config: { queryKey: QueryKey; q
     getNextPageParam: (lastPage) => lastPage.cursor ?? null,
     getPreviousPageParam: () => null,
     staleTime: config.staleTime,
-    gcTime: config.gcTime
+    gcTime: config.gcTime,
+    maxPages: config.maxPages
   });
 }
-export function createOffsetPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (offset: number, limit: number) => Promise<OffsetPaginatedResponse<T>>; limit?: number; staleTime?: number; gcTime?: number }): UseInfiniteQueryOptions<OffsetPaginatedResponse<T>, DefaultError, OffsetPaginatedResponse<T>, QueryKey, number> {
+export function createOffsetPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (offset: number, limit: number) => Promise<OffsetPaginatedResponse<T>>; limit?: number; staleTime?: number; gcTime?: number; maxPages?: number }): UseInfiniteQueryOptions<OffsetPaginatedResponse<T>, DefaultError, OffsetPaginatedResponse<T>, QueryKey, number> {
   const limit = config.limit ?? 20;
   return createInfiniteQueryOptions({
     queryKey: [...config.queryKey, limit] as QueryKey,
@@ -35,10 +36,11 @@ export function createOffsetPaginationOptions<T>(config: { queryKey: QueryKey; q
       return (allPages.length - 2) * limit;
     },
     staleTime: config.staleTime,
-    gcTime: config.gcTime
+    gcTime: config.gcTime,
+    maxPages: config.maxPages
   });
 }
-export function createPageNumberPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (page: number) => Promise<PageNumberPaginatedResponse<T>>; staleTime?: number; gcTime?: number }): UseInfiniteQueryOptions<PageNumberPaginatedResponse<T>, DefaultError, PageNumberPaginatedResponse<T>, QueryKey, number> {
+export function createPageNumberPaginationOptions<T>(config: { queryKey: QueryKey; queryFn: (page: number) => Promise<PageNumberPaginatedResponse<T>>; staleTime?: number; gcTime?: number; maxPages?: number }): UseInfiniteQueryOptions<PageNumberPaginatedResponse<T>, DefaultError, PageNumberPaginatedResponse<T>, QueryKey, number> {
   return createInfiniteQueryOptions({
     queryKey: config.queryKey,
     queryFn: ({ pageParam }) => config.queryFn(pageParam as number),
@@ -53,6 +55,7 @@ export function createPageNumberPaginationOptions<T>(config: { queryKey: QueryKe
       return allPages.length - 1;
     },
     staleTime: config.staleTime,
-    gcTime: config.gcTime
+    gcTime: config.gcTime,
+    maxPages: config.maxPages
   });
 }

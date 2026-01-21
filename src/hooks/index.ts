@@ -51,3 +51,5 @@ export { skipToken, useEnhancedQuery, type EnhancedQueryOptions, type EnhancedQu
 export { createSuspenseInfiniteQuery, createSuspenseQuery, useEnhancedSuspenseInfiniteQuery, useEnhancedSuspenseQuery } from "./useSuspenseQuery.js";
 export { useDataGuardQueryConfig } from "./useDataGuardQuery.js";
 export { useDataGuardMutation, type DataGuardMutationOptions } from "./useDataGuardMutation.js";
+export { useMutationState, type MutationFilters, type MutationStateOptions } from "./useMutationState.js";
+export { useIsFetching, useIsMutating } from "./useStatus.js";
